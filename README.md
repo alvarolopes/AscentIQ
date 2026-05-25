@@ -1,4 +1,4 @@
-# Mountain Performance Athlete Agent
+# Mountain Endurance Performance Agent
 
 Personal performance analytics system for trail running, endurance training, and high-altitude mountaineering.
 
