@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Raw private activity and health exports
+activities/gpx/*
+activities/garmin_csv/*
+activities/notes/*
+*.fit
+*.fit.gz
+*.gpx
+*.tcx
+*.csv
+*.zip
+*.pdf
+
+# Private athlete databases
+data/*.json
+!data/sample_*.json
+
+# Generated private machine-readable outputs
+analysis/**/*.json
+analysis/context/ergo_test_extracted_text.txt
+
+# Public portfolio outputs may be versioned intentionally
+!analysis/**/*.md
+!analysis/**/*.svg
+
+# Local OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

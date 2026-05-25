@@ -1,238 +1,141 @@
-# 🏔️ CALENDÁRIO MESTRE DE TREINAMENTO  
-## Do início da musculação até a Expedição Andina – Arequipa  
-📅 19/01/2026 → 21/06/2026
+# Mountain Performance Athlete Agent
 
----
+Personal performance analytics system for trail running, endurance training, and high-altitude mountaineering.
 
-## 🎯 OBJETIVO CENTRAL DO ANO
-Expedição andina com múltiplas ascensões entre **5.400m e 6.425m**, exigindo:
-- resistência prolongada
-- força funcional
-- estabilidade articular
-- tolerância à fadiga
-- recuperação eficiente
+Suggested GitHub description: `Mountain-endurance analytics agent for trail running, GPX/FIT parsing, training-load modeling, and public performance dashboards.`
 
-👉 Provas de corrida = **treinos de luxo**, não picos de performance.
+## Why This Exists
 
----
+This project turns raw endurance data into a coach-like analytical context. It was built around a real 2026 objective: an Andean expedition in Arequipa, where the priority is not pace, but durability, vertical efficiency, fatigue control, and the ability to keep moving for a long time.
 
-## 🔑 PRINCÍPIOS FIXOS (NÃO NEGOCIÁVEIS)
-- Corrida = eixo central
-- Musculação = suporte estrutural
-- Natação = recuperação ativa
-- Perna pesada: **máx. 1x/semana**
-- Nunca treinar até falha
-- Antes de provas: **reduz carga, mantém rotina**
-- Objetivo: **chegar inteiro**
+The goal is to combine:
 
----
+- Sports memory: athlete profile, training history, race history, body metrics, mountain history, and season goals.
+- Data analysis: GPX/FIT parsing, Garmin CSV imports, elevation metrics, heart-rate patterns, load modeling, and trend charts.
+- Coaching interpretation: practical answers about pacing, fatigue, mountain readiness, and whether a workout helps the main objective.
 
-# 🟦 FASE 1 — BASE + FORÇA
-📅 19/01/2026 → 06/03/2026
+This repository is intentionally portfolio-friendly: it can show the analytical engine and generated dashboards publicly while keeping raw personal health exports private.
 
-### Estrutura semanal padrão
+## Example Dashboards
 
-Segunda  
-- Musculação – **Perna FORTE**  
-Descrição: Força para subida, mochila e terreno instável.
+### Performance Management Model
 
-Terça  
-- Natação (manhã)  
-- Corrida (noite – plano smartwatch)  
-Descrição: Aeróbio sem impacto + estímulo estruturado.
+![Performance Management Model](analysis/context/performance_management_chart.svg)
 
-Quarta  
-- Musculação – Superior + core  
-- Corrida (noite)  
-Descrição: Postura e estabilidade.
+### Fitness, Fatigue, and Form - Last 3 Weeks
 
-Quinta  
-- Natação (manhã)  
-- Corrida (noite)  
-Descrição: Recuperação ativa.
+![Fitness Fatigue Form Last 3 Weeks](analysis/context/fitness_form_fatigue_last_3_weeks.svg)
 
-Sexta  
-- Musculação – Superior  
-- Corrida (noite)  
-Descrição: Suporte estrutural.
+### Race Performance Index
 
-Sábado  
-- Musculação – **Perna LEVE / estabilidade**  
-Descrição: Blindagem articular, unilateral e core.
+![Race Performance Index](analysis/races/last_10_race_performance_chart.svg)
 
-Domingo  
-- Corrida – Long run / trail  
-Descrição: Tempo em pé, economia e resiliência.
+## What The Agent Analyzes
 
----
+- Trail and road races used as endurance training blocks.
+- Long runs, vertical sessions, swims, strength workouts, hikes, and stair sessions.
+- Official GPX files, prioritizing route elevation over watch elevation when available.
+- Garmin activity CSV exports, workout CSV exports, sleep CSV exports, and FIT files.
+- Subjective context such as training intent, fatigue perception, and race strategy.
 
-# 🟨 MINI-TAPER — WTR FLORESTA DA TIJUCA (21 km)
-📅 07/03/2026 → 14/03/2026
+## Core Metrics
 
-Objetivo: chegar descansado **sem perder ritmo**.
+- `vertical_per_km = elevation_gain_m / distance_km`
+- `vertical_speed = elevation_gain_m / duration_hours`
+- `vertical_speed_moving = elevation_gain_m / moving_time_hours`
+- `stopped_time = elapsed_time - moving_time`
+- `mountain_index = distance_km + elevation_gain_m / 100`
+- `heart_rate_efficiency = pace_seconds_per_km / avg_hr`
+- `fitness`: chronic load estimate, smoothed over 42 days.
+- `fatigue`: acute load estimate, smoothed over 7 days.
+- `form`: readiness estimate, calculated as `fitness - fatigue`.
 
-Segunda (07/03)  
-- Musculação – Perna **LEVE**  
-Descrição: Ativação, sem carga alta.
+The performance-management model is inspired by training-load concepts, but it is not the proprietary TrainingPeaks algorithm. It is a custom model tuned for this athlete-agent use case.
 
-Terça  
-- Corrida leve (30–40 min) + natação  
-Descrição: Soltar.
+## Project Structure
 
-Quarta  
-- Musculação – Superior + core  
-- Corrida leve  
-Descrição: Manter rotina.
+```text
+athlete-agent/
+  activities/        Raw local inputs: GPX, FIT, Garmin CSV, notes.
+  analysis/          Generated reports, dashboards, and chart outputs.
+  data/              Athlete memory and private analytical state.
+  docs/              Public documentation for metrics, privacy, and usage.
+  prompts/           System prompt for the coaching analyst agent.
+  scripts/           Importers, parsers, comparison tools, and chart builders.
+```
 
-Quinta  
-- Corrida com 4×20s acelerações  
-Descrição: Ativar sistema nervoso.
+## Public vs Private Data
 
-Sexta  
-- Caminhada / mobilidade  
-Descrição: Chegar leve.
+Raw Garmin/Strava exports, FIT files, GPX files, PDFs, and athlete JSON databases can contain sensitive health and location data. The `.gitignore` is configured so those files stay local by default.
 
-Sábado (14/03)  
-- **PROVA – WTR Floresta da Tijuca**  
-Descrição: Treino de luxo. Ritmo controlado.
+Recommended public assets:
 
----
+- Source code in `scripts/`.
+- Documentation in `docs/`.
+- Sanitized sample JSON files.
+- Generated SVG dashboards that are safe to show as portfolio examples.
 
-# 🟦 FASE 2 — CONTINUIDADE CONTROLADA
-📅 15/03/2026 → 12/04/2026
+Recommended private assets:
 
-Estrutura volta ao padrão:
-- Corrida: 5x
-- Musculação: 4x
-- Natação: 2x
+- Raw activity exports.
+- Sleep exports.
+- Ergometric or cardiopulmonary PDFs.
+- Full athlete history JSON files.
+- Location-rich GPX/FIT files.
 
-Descrição: manter base e fluidez. Sem aumento agressivo.
+## Quick Start
 
----
+Install optional dependencies:
 
-# 🟨 MINI-TAPER — RJ HALF MARATHON
-📅 13/04/2026 → 19/04/2026
+```bash
+python -m pip install -r requirements.txt
+```
 
-Mesma lógica de redução de carga:
+Parse an official GPX route:
 
-- Sem perna pesada
-- Corridas leves
-- 1 sessão com acelerações curtas
+```bash
+python scripts/parse_gpx.py activities/gpx/example.gpx --category race
+```
 
-📅 19/04/2026  
-- **PROVA – RJ Half Marathon**  
-Descrição: Ritmo sustentável, sem RP.
+Build the performance-management model:
 
----
+```bash
+python scripts/build_performance_management_model.py
+python scripts/build_last_3_weeks_pmc_chart.py
+```
 
-# 🟥 FASE 3 — BLOCO-CHAVE TRAIL
-📅 20/04/2026 → 16/05/2026
+Import recent Garmin files from a custom folder:
 
-### Estrutura semanal
+```bash
+ATHLETE_AGENT_DOWNLOADS=/path/to/exports python scripts/import_garmin_recent_data.py
+```
 
-Segunda  
-- Musculação – **Perna FORTE (baixo volume)**  
+On Windows PowerShell:
 
-Terça  
-- Natação  
-- Corrida com subidas longas  
+```powershell
+$env:ATHLETE_AGENT_DOWNLOADS = "C:\Users\your-user\Downloads"
+python scripts/import_garmin_recent_data.py
+```
 
-Quarta  
-- Musculação – Superior + core  
-- Corrida  
+## Coaching Output Format
 
-Quinta  
-- Natação  
-- Corrida leve  
+The agent should answer with:
 
-Sexta  
-- Musculação – Superior  
-- Corrida curta  
+1. Activity summary.
+2. Physiological reading.
+3. Terrain reading.
+4. Comparison with history.
+5. Impact on the season goal.
+6. Practical recommendation.
 
-Sábado  
-- Musculação – Perna LEVE + mobilidade  
+The operating principle is simple: races are treated as training opportunities for the main mountain objective. Completion, endurance, and recovery quality matter more than chasing pace unless the athlete explicitly changes that goal.
 
-Domingo  
-- Corrida – Longão trail  
+## Portfolio Angle
 
-Descrição geral: **semana mais importante do semestre**.
+This project demonstrates:
 
----
-
-# 🟥 MINI-TAPER — WTR ARRAIAL DO CABO (30 km)
-📅 17/05/2026 → 23/05/2026
-
-Objetivo: absorver carga e executar bem.
-
-- Musculação: apenas superior e mobilidade
-- Corrida: 3–4x leve
-- Zero excêntrico pesado
-
-📅 23/05/2026  
-- **PROVA A – WTR Arraial do Cabo (30 km)**  
-Descrição: Execução inteligente. Prioridade do semestre.
-
----
-
-# 🟦 FASE 4 — AJUSTE FINAL
-📅 24/05/2026 → 31/05/2026
-
-- Corrida: 4x Z1/Z2
-- Musculação: 2x leve
-- Natação: 2x
-
-Descrição: estabilizar e preparar o corpo para o bloco final.
-
----
-
-# 🟦 MINI-TAPER DUPLO — MEIA + MARATONA
-📅 01/06/2026 → 07/06/2026
-
-### 01/06 → 05/06
-- Corridas leves
-- Sem musculação de perna
-- Mobilidade e sono prioritários
-
-📅 06/06/2026  
-- **Meia Maratona – CONTROLE TOTAL**  
-Descrição: Z2 alto, aquecimento prolongado.
-
-📅 07/06/2026  
-- **Maratona – CONTROLE ABSOLUTO**  
-Descrição: Último grande estímulo metabólico do ano.
-
----
-
-# 🟢 FASE 5 — TAPER PARA EXPEDIÇÃO
-📅 08/06/2026 → 20/06/2026
-
-### 08/06 → 14/06
-- Corrida: 3–4x (30–60 min)
-- Musculação: 2x leve (encerrar até 11/06)
-- Natação: 2x
-
-### 15/06 → 20/06
-- Corrida: 2–3x (30–45 min)
-- 1 sessão com 3–4 acelerações de 20s
-- Apenas mobilidade e ativação
-
-Descrição: chegar **aceso, não cansado**.
-
----
-
-# ✈️ 21/06/2026 — EMBARQUE PARA AREQUIPA
-
-- Caminhada leve
-- Mobilidade
-- Hidratação
-- Sono
-
-Descrição: trabalho feito. Corpo confiável.
-
----
-
-## 🧭 NOTA FINAL
-Este plano não cria picos artificiais.  
-Ele constrói **resistência, estabilidade e margem de erro**.
-
-Na montanha, isso vale mais do que qualquer pace.
+- Python data pipelines over messy real-world sports exports.
+- Domain modeling for endurance and mountain performance.
+- Custom load modeling and trend visualization.
+- Privacy-aware public presentation of personal analytics.
+- Agent-oriented context design for coaching-style reasoning.

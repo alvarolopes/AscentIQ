@@ -1,0 +1,14 @@
+[
+  {
+    "date": "2026-05-23",
+    "name": "Sample coastal trail race",
+    "type": "trail race",
+    "distance_km": 30.0,
+    "elapsed_time": "04:55:00",
+    "moving_time": "04:42:00",
+    "avg_hr": 145,
+    "max_hr": 183,
+    "official_elevation_gain_m": 870,
+    "pace_avg": "09:50/km"
+  }
+]

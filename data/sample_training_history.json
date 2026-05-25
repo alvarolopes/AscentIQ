@@ -1,0 +1,35 @@
+[
+  {
+    "date": "2026-05-01",
+    "type": "Run",
+    "name": "Sample aerobic trail run",
+    "classification_hint": "base aerobic",
+    "distance_km": 8.2,
+    "elapsed_time": "01:12:00",
+    "moving_time": "01:10:30",
+    "avg_hr": 136,
+    "max_hr": 158,
+    "elevation_gain_m": 260
+  },
+  {
+    "date": "2026-05-04",
+    "type": "Weight Training",
+    "name": "Sample mountain strength session",
+    "classification_hint": "strength",
+    "elapsed_time": "00:45:00",
+    "avg_hr": 112,
+    "max_hr": 154
+  },
+  {
+    "date": "2026-05-07",
+    "type": "Run",
+    "name": "Sample vertical session",
+    "classification_hint": "specific climb",
+    "distance_km": 6.0,
+    "elapsed_time": "00:58:00",
+    "moving_time": "00:56:00",
+    "avg_hr": 148,
+    "max_hr": 171,
+    "elevation_gain_m": 420
+  }
+]

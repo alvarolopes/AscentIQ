@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="880" viewBox="0 0 1400 880">
+<rect width="1400" height="880" fill="#f7f4ed"/>
+<text x="90" y="45" font-size="32" font-family="Georgia, serif" fill="#1f1c17" font-weight="700">Ultimas 10 provas: tempo e IEP-100</text>
+<text x="90" y="72" font-size="16" font-family="Verdana, sans-serif" fill="#5b5449">IEP-100 = indice de execucao de prova, focado em fechamento, continuidade, economia equivalente e velocidade equivalente.</text>
+<line x1="90" y1="340.0" x2="1360" y2="340.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="345.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">0h</text>
+<line x1="90" y1="301.0" x2="1360" y2="301.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="306.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">2h</text>
+<line x1="90" y1="262.0" x2="1360" y2="262.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="267.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">4h</text>
+<line x1="90" y1="223.0" x2="1360" y2="223.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="228.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">6h</text>
+<line x1="90" y1="184.0" x2="1360" y2="184.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="189.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">8h</text>
+<line x1="90" y1="145.0" x2="1360" y2="145.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="150.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">10h</text>
+<line x1="90" y1="106.0" x2="1360" y2="106.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="111.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">12h</text>
+<line x1="90" y1="700.0" x2="1360" y2="700.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="705.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">0</text>
+<line x1="90" y1="652.0" x2="1360" y2="652.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="657.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">20</text>
+<line x1="90" y1="604.0" x2="1360" y2="604.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="609.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">40</text>
+<line x1="90" y1="556.0" x2="1360" y2="556.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="561.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">60</text>
+<line x1="90" y1="508.0" x2="1360" y2="508.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="513.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">80</text>
+<line x1="90" y1="460.0" x2="1360" y2="460.0" stroke="#d6d0c3" stroke-width="1"/>
+<text x="78" y="465.0" text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">100</text>
+<text x="90" y="70" font-size="20" font-family="Verdana, sans-serif" fill="#1f1c17" font-weight="700">Tempo total FIT (horas)</text>
+<text x="90" y="430" font-size="20" font-family="Verdana, sans-serif" fill="#1f1c17" font-weight="700">IEP-100</text>
+<rect x="90.0" y="292.2" width="110.8" height="47.8" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="90.0" y="597.8" width="110.8" height="102.2" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="145.4" y="284.2" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">2.45h</text>
+<text x="145.4" y="589.8" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">42.6</text>
+<g transform="translate(145.4,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">04-27 | RJ Half</text>
+</g>
+<rect x="218.8" y="260.3" width="110.8" height="79.7" rx="6" fill="#2f7d32" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="218.8" y="625.4" width="110.8" height="74.6" rx="6" fill="#2f7d32" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="274.2" y="252.3" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">4.09h</text>
+<text x="274.2" y="617.4" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">31.1</text>
+<g transform="translate(274.2,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">05-24 | Arraial</text>
+</g>
+<rect x="347.6" y="320.3" width="110.8" height="19.7" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="347.6" y="471.8" width="110.8" height="228.2" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="403.0" y="312.3" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">1.01h</text>
+<text x="403.0" y="463.8" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">95.1</text>
+<g transform="translate(403.0,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">06-20 | 10k Rio</text>
+</g>
+<rect x="476.4" y="228.5" width="110.8" height="111.5" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="476.4" y="567.8" width="110.8" height="132.2" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="531.8" y="220.5" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">5.72h</text>
+<text x="531.8" y="559.8" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">55.1</text>
+<g transform="translate(531.8,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">06-22 | Maratona Rio</text>
+</g>
+<rect x="605.2" y="295.2" width="110.8" height="44.8" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="605.2" y="549.8" width="110.8" height="150.2" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="660.6" y="287.2" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">2.30h</text>
+<text x="660.6" y="541.8" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">62.6</text>
+<g transform="translate(660.6,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">08-03 | Ponte</text>
+</g>
+<rect x="734.0" y="295.5" width="110.8" height="44.5" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="734.0" y="527.0" width="110.8" height="173.0" rx="6" fill="#1f5aa6" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="789.4" y="287.5" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">2.28h</text>
+<text x="789.4" y="519.0" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">72.1</text>
+<g transform="translate(789.4,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">08-17 | 27 Meia</text>
+</g>
+<rect x="862.8" y="158.1" width="110.8" height="181.9" rx="6" fill="#2f7d32" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="862.8" y="562.0" width="110.8" height="138.0" rx="6" fill="#2f7d32" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="918.2" y="150.1" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">9.33h</text>
+<text x="918.2" y="554.0" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">57.5</text>
+<g transform="translate(918.2,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">10-04 | Campos</text>
+</g>
+<rect x="991.6" y="100.0" width="110.8" height="240.0" rx="6" fill="#2f7d32" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="991.6" y="556.0" width="110.8" height="144.0" rx="6" fill="#2f7d32" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="1047.0" y="92.0" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">12.31h</text>
+<text x="1047.0" y="548.0" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">60.0</text>
+<g transform="translate(1047.0,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">11-15 | Serra</text>
+</g>
+<rect x="1120.4" y="319.1" width="110.8" height="20.9" rx="6" fill="#7a7a7a" opacity="0.85" stroke="none" stroke-width="0"/>
+<rect x="1120.4" y="593.9" width="110.8" height="106.1" rx="6" fill="#7a7a7a" opacity="0.85" stroke="none" stroke-width="0"/>
+<text x="1175.8" y="311.1" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">1.07h</text>
+<text x="1175.8" y="585.9" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">44.2</text>
+<g transform="translate(1175.8,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">11-23 | Portela</text>
+</g>
+<rect x="1249.2" y="246.6" width="110.8" height="93.4" rx="6" fill="#2f7d32" opacity="0.85" stroke="#d9480f" stroke-width="4"/>
+<rect x="1249.2" y="520.0" width="110.8" height="180.0" rx="6" fill="#2f7d32" opacity="0.85" stroke="#d9480f" stroke-width="4"/>
+<text x="1304.6" y="238.6" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">4.79h</text>
+<text x="1304.6" y="512.0" text-anchor="middle" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">75.0</text>
+<g transform="translate(1304.6,778.0) rotate(-32)">
+<text text-anchor="end" font-size="13" font-family="Verdana, sans-serif" fill="#1f1c17">03-14 | WTR Rio</text>
+</g>
+<rect x="90" y="785" width="18" height="18" fill="#2f7d32" opacity="0.85"/>
+<text x="118" y="799" font-size="14" font-family="Verdana, sans-serif" fill="#1f1c17">Trilha</text>
+<rect x="210" y="785" width="18" height="18" fill="#1f5aa6" opacity="0.85"/>
+<text x="238" y="799" font-size="14" font-family="Verdana, sans-serif" fill="#1f1c17">Rua</text>
+<rect x="310" y="785" width="18" height="18" fill="#7a7a7a" opacity="0.85"/>
+<text x="338" y="799" font-size="14" font-family="Verdana, sans-serif" fill="#1f1c17">Baixa confianca</text>
+<rect x="480" y="785" width="18" height="18" fill="white" stroke="#d9480f" stroke-width="3"/>
+<text x="508" y="799" font-size="14" font-family="Verdana, sans-serif" fill="#1f1c17">Prova mais recente</text>
+<text x="90" y="827" font-size="13" font-family="Verdana, sans-serif" fill="#5b5449">Cronologia da esquerda para a direita.</text>
+</svg>
