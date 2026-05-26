@@ -1,5 +1,8 @@
 # Mountain Endurance Performance Agent
 
+
+<img width="1254" height="1254" alt="ascentiq" src="https://github.com/user-attachments/assets/e97ab53d-7e35-47c3-92f6-af88c8852a5f" />
+
 Personal performance analytics system for trail running, endurance training, and high-altitude mountaineering.
 
 Suggested GitHub description: `Mountain-endurance analytics agent for trail running, GPX/FIT parsing, training-load modeling, and public performance dashboards.`
