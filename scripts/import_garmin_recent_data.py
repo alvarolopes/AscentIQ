@@ -27,6 +27,7 @@ TYPE_MAP = {
     "corrida em trilhas": ("Run", "trail run"),
     "corrida em esteira": ("Run", "treadmill run"),
     "caminhada": ("Walk", "walk"),
+    "ciclismo": ("Bike", "cycling"),
     "natacao em piscina": ("Swim", "pool swim"),
     "treino de forca": ("Weight Training", "strength workout"),
     "subir escada": ("Stair-Stepper", "stair climber"),

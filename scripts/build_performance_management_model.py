@@ -109,6 +109,8 @@ def fallback_hrr(item: dict[str, Any]) -> float:
         return 0.38
     if activity_type == "Swim":
         return 0.45
+    if activity_type == "Bike":
+        return 0.45
     if activity_type == "Walk":
         return 0.28
     return 0.52
@@ -119,6 +121,7 @@ def type_multiplier(item: dict[str, Any]) -> float:
         "Run": 1.0,
         "Hike": 1.08,
         "Stair-Stepper": 1.05,
+        "Bike": 0.70,
         "Swim": 0.75,
         "Walk": 0.38,
         "Weight Training": 0.55,
