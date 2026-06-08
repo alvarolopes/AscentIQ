@@ -40,6 +40,27 @@ If Garmin asks for MFA, complete it interactively. Tokens are managed by the MCP
 
 ## Capture A Snapshot
 
+For day-to-day use on Windows, the easiest path is the interactive full import runner:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_garmin_mcp_full_import.ps1 `
+  -StartDate 2024-01-01 `
+  -EndDate 2026-06-08
+```
+
+If `GARMIN_EMAIL` and `GARMIN_PASSWORD` are not already set in that PowerShell process, the runner prompts for them without storing credentials in the repository. It then captures the Garmin MCP snapshot, imports it into the local AscentIQ database, deduplicates existing Garmin CSV rows, and rebuilds the performance models/charts.
+
+The runner also supports a lighter detail pass:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_garmin_mcp_full_import.ps1 `
+  -StartDate 2026-01-01 `
+  -EndDate 2026-06-08 `
+  -MaxDetailActivities 100
+```
+
+For a smaller manual snapshot:
+
 ```powershell
 python scripts\fetch_garmin_mcp_snapshot.py --start-date 2026-06-01 --end-date 2026-06-08
 ```
@@ -70,7 +91,7 @@ python scripts\build_performance_management_model.py
 python scripts\build_last_3_weeks_pmc_chart.py
 ```
 
-The import is deduplicated. If an activity already exists from Garmin CSV export, the MCP copy should not be added again unless the timestamps or duration differ.
+The import is deduplicated. If an activity already exists from Garmin CSV export, the MCP copy is merged into the existing row and can enrich it with Garmin activity IDs, moving time, HR, and elevation instead of creating a duplicate. Garmin aliases such as `mountaineering` and `stair_climbing` are normalized to the local activity schema.
 
 ## Why Two Scripts?
 

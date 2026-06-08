@@ -29,6 +29,9 @@ TYPE_MAP = {
     "swimming": ("Swim", "swim"),
     "walking": ("Walk", "walk"),
     "hiking": ("Hike", "hike"),
+    "mountaineering": ("Hike", "mountaineering"),
+    "stair_climbing": ("Stair-Stepper", "stair climbing"),
+    "stair_stepper": ("Stair-Stepper", "stair stepper"),
     "strength_training": ("Weight Training", "strength workout"),
 }
 
@@ -89,6 +92,13 @@ def walk_dicts(payload: Any) -> list[dict[str, Any]]:
     elif isinstance(payload, list):
         for item in payload:
             found.extend(walk_dicts(item))
+    elif isinstance(payload, str):
+        text = payload.strip()
+        if text.startswith(("{", "[")):
+            try:
+                found.extend(walk_dicts(json.loads(text)))
+            except json.JSONDecodeError:
+                pass
     return found
 
 
@@ -215,8 +225,8 @@ def normalize_activity(row: dict[str, Any]) -> dict[str, Any] | None:
     _, activity_id = key_lookup(row, "activityId", "activity_id", "id")
     t, subtype = activity_type(row)
     dist = distance_km(row)
-    _, duration = key_lookup(row, "duration", "elapsedDuration", "durationSeconds")
-    _, moving = key_lookup(row, "movingDuration", "movingDurationSeconds", "moving_time")
+    _, duration = key_lookup(row, "elapsedDuration", "elapsedDurationSeconds", "durationSeconds", "duration")
+    _, moving = key_lookup(row, "movingDuration", "movingDurationSeconds", "duration", "moving_time")
     elapsed_seconds = seconds_from_any(duration)
     moving_seconds = seconds_from_any(moving) or elapsed_seconds
     if elapsed_seconds and moving_seconds and moving_seconds > elapsed_seconds:
@@ -351,6 +361,92 @@ def history_key(item: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+GENERIC_NAMES = {"strength", "morning weight training", "activity"}
+
+
+def human_name_score(item: dict[str, Any]) -> int:
+    name = str(item.get("name") or "").strip()
+    normalized = name.lower()
+    if not name:
+        return 0
+    if normalized in GENERIC_NAMES:
+        return 1
+    score = 10
+    if any(token in normalized for token in ("pull", "push", "legs", "core", "hibrido", "híbrido")):
+        score += 10
+    return score
+
+
+def history_quality_score(item: dict[str, Any]) -> int:
+    score = 0
+    if item.get("garmin_activity_id"):
+        score += 20
+    if item.get("avg_hr") is not None:
+        score += 10
+    if item.get("moving_time_seconds") is not None:
+        score += 8
+    if safe_float(item.get("distance_km")):
+        score += 3
+    score += human_name_score(item)
+    return score
+
+
+def similar_history_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    date_time = item.get("date_time") or item.get("date")
+    distance = safe_float(item.get("distance_km")) or 0.0
+    activity_type = item.get("type")
+    if activity_type in {"mountaineering", "Hike"}:
+        activity_type = "Hike"
+    elif activity_type in {"stair_climbing", "Stair-Stepper"}:
+        activity_type = "Stair-Stepper"
+    return (date_time, activity_type, round(distance, 2))
+
+
+def merge_duplicate_activity(current: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    primary, secondary = (
+        (candidate, current)
+        if history_quality_score(candidate) >= history_quality_score(current)
+        else (current, candidate)
+    )
+    merged = dict(secondary)
+    merged.update({key: value for key, value in primary.items() if value is not None and value != ""})
+
+    best_name_item = candidate if human_name_score(candidate) > human_name_score(current) else current
+    if best_name_item.get("name"):
+        merged["name"] = best_name_item["name"]
+
+    sources = []
+    for item in (current, candidate):
+        source = item.get("source")
+        for source_part in str(source or "").split("+"):
+            if source_part and source_part not in sources:
+                sources.append(source_part)
+    if sources:
+        merged["source"] = "+".join(sources)
+
+    return merged
+
+
+def dedupe_similar_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    exact: dict[tuple[Any, ...], dict[str, Any]] = {}
+    similar_index: dict[tuple[Any, ...], tuple[Any, ...]] = {}
+    order: list[tuple[Any, ...]] = []
+    for item in history:
+        exact_key = history_key(item)
+        similar_key = similar_history_key(item)
+        target_key = exact_key if exact_key in exact else similar_index.get(similar_key, exact_key)
+        if target_key not in exact:
+            exact[target_key] = dict(item)
+            similar_index[similar_key] = target_key
+            order.append(target_key)
+            continue
+        exact[target_key] = merge_duplicate_activity(exact[target_key], item)
+        similar_index[similar_key] = target_key
+    deduped = [exact[key] for key in order]
+    deduped.sort(key=lambda item: item.get("date_time") or item.get("date") or "")
+    return deduped
+
+
 def merge_history(existing: list[dict[str, Any]], new_items: list[dict[str, Any]], since: str | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     keys = {history_key(item) for item in existing}
     fallback_keys = {
@@ -370,14 +466,12 @@ def merge_history(existing: list[dict[str, Any]], new_items: list[dict[str, Any]
             continue
         key = history_key(item)
         fallback = ("fallback", item.get("date_time"), item.get("type"), item.get("name"), item.get("elapsed_time"))
-        if key in keys or fallback in fallback_keys:
-            continue
         merged.append(item)
-        added.append(item)
+        if key not in keys and fallback not in fallback_keys:
+            added.append(item)
         keys.add(key)
         fallback_keys.add(fallback)
-    merged.sort(key=lambda item: item.get("date_time") or item.get("date") or "")
-    return merged, added
+    return dedupe_similar_history(merged), added
 
 
 def merge_sleep(existing_path: Path, new_sleep: list[dict[str, Any]]) -> dict[str, Any]:
