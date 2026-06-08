@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT_DIR = ROOT / "data" / "garmin_mcp_exports"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Capture a local JSON snapshot from a Garmin MCP server."
+    )
+    parser.add_argument("--start-date", help="Start date YYYY-MM-DD. Defaults to 14 days ago.")
+    parser.add_argument("--end-date", help="End date YYYY-MM-DD. Defaults to today.")
+    parser.add_argument("--output", help="Output JSON file. Defaults to data/garmin_mcp_exports/garmin_mcp_snapshot_*.json.")
+    parser.add_argument("--server-command", default=os.environ.get("GARMIN_MCP_COMMAND", "uvx"))
+    parser.add_argument(
+        "--server-arg",
+        action="append",
+        default=None,
+        help="Argument passed to the MCP server command. Can be repeated. Defaults to mcp-garmin.",
+    )
+    parser.add_argument("--activity-tool", default="get_activities_by_date")
+    parser.add_argument("--sleep-tool", default="get_sleep_data")
+    parser.add_argument("--skip-sleep", action="store_true")
+    parser.add_argument("--list-tools", action="store_true", help="Only list server tools and write no snapshot.")
+    return parser.parse_args()
+
+
+def date_range(start: date, end: date) -> list[str]:
+    days: list[str] = []
+    current = start
+    while current <= end:
+        days.append(current.isoformat())
+        current += timedelta(days=1)
+    return days
+
+
+def output_path(args: argparse.Namespace, start: str, end: str) -> Path:
+    if args.output:
+        return Path(args.output)
+    DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return DEFAULT_OUTPUT_DIR / f"garmin_mcp_snapshot_{start}_to_{end}_{stamp}.json"
+
+
+def decode_tool_result(result: Any) -> Any:
+    if hasattr(result, "model_dump"):
+        payload = result.model_dump(mode="json")
+    elif hasattr(result, "dict"):
+        payload = result.dict()
+    else:
+        payload = result
+    content = payload.get("content") if isinstance(payload, dict) else None
+    if isinstance(content, list) and len(content) == 1:
+        text = content[0].get("text") if isinstance(content[0], dict) else None
+        if text:
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                return text
+    return payload
+
+
+async def capture(args: argparse.Namespace) -> int:
+    try:
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+    except ImportError as exc:
+        raise SystemExit(
+            "Missing MCP Python SDK. Install optional dependencies with: "
+            "python -m pip install -r requirements-mcp.txt"
+        ) from exc
+
+    end = date.fromisoformat(args.end_date) if args.end_date else date.today()
+    start = date.fromisoformat(args.start_date) if args.start_date else end - timedelta(days=14)
+    server_args = args.server_arg if args.server_arg is not None else ["mcp-garmin"]
+    env = os.environ.copy()
+    params = StdioServerParameters(command=args.server_command, args=server_args, env=env)
+
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools_response = await session.list_tools()
+            tools = tools_response.model_dump(mode="json") if hasattr(tools_response, "model_dump") else tools_response
+            if args.list_tools:
+                print(json.dumps(tools, ensure_ascii=False, indent=2))
+                return 0
+
+            activities_result = await session.call_tool(
+                args.activity_tool,
+                arguments={"start_date": start.isoformat(), "end_date": end.isoformat()},
+            )
+            snapshot: dict[str, Any] = {
+                "source": "garmin_mcp",
+                "server_command": args.server_command,
+                "server_args": server_args,
+                "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "date_range": {"start": start.isoformat(), "end": end.isoformat()},
+                "activities": decode_tool_result(activities_result),
+                "sleep": {"daily": []},
+            }
+
+            if not args.skip_sleep:
+                for day in date_range(start, end):
+                    try:
+                        sleep_result = await session.call_tool(args.sleep_tool, arguments={"date": day})
+                        snapshot["sleep"]["daily"].append(decode_tool_result(sleep_result))
+                    except Exception as exc:  # MCP servers vary; keep partial snapshots useful.
+                        snapshot["sleep"]["daily"].append({"date": day, "error": str(exc)})
+
+    out_path = output_path(args, start.isoformat(), end.isoformat())
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Wrote {out_path}")
+    return 0
+
+
+def main() -> int:
+    return asyncio.run(capture(parse_args()))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

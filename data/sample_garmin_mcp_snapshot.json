@@ -1,0 +1,33 @@
+{
+  "source": "sample_garmin_mcp_snapshot",
+  "generated_at": "2026-06-08T12:00:00-03:00",
+  "activities": [
+    {
+      "activityId": "sample-run-001",
+      "activityName": "Sample Endurance Run",
+      "activityType": {
+        "typeKey": "running"
+      },
+      "startTimeLocal": "2026-06-07T06:35:36",
+      "distance": 43120,
+      "duration": 19241,
+      "movingDuration": 19023,
+      "averageHR": 145,
+      "maxHR": 177,
+      "elevationGain": 111
+    }
+  ],
+  "sleep": {
+    "daily": [
+      {
+        "calendarDate": "2026-06-07",
+        "sleepScore": 57,
+        "quality": "Poor",
+        "sleepTimeSeconds": 19800,
+        "restingHeartRate": 56,
+        "bodyBattery": 29,
+        "hrvStatus": "44"
+      }
+    ]
+  }
+}

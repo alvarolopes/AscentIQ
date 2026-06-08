@@ -39,6 +39,7 @@ This repository is intentionally portfolio-friendly: it can show the analytical 
 - Long runs, vertical sessions, swims, strength workouts, hikes, and stair sessions.
 - Official GPX files, prioritizing route elevation over watch elevation when available.
 - Garmin activity CSV exports, workout CSV exports, sleep CSV exports, and FIT files.
+- Optional Garmin MCP snapshots used as a read-only import layer.
 - Subjective context such as training intent, fatigue perception, and race strategy.
 
 ## Core Metrics
@@ -119,6 +120,16 @@ On Windows PowerShell:
 $env:ATHLETE_AGENT_DOWNLOADS = "C:\Users\your-user\Downloads"
 python scripts/import_garmin_recent_data.py
 ```
+
+Optional Garmin MCP flow:
+
+```bash
+python -m pip install -r requirements-mcp.txt
+python scripts/fetch_garmin_mcp_snapshot.py --start-date 2026-06-01 --end-date 2026-06-08
+python scripts/import_garmin_mcp_snapshot.py --input data/garmin_mcp_exports
+```
+
+See `docs/GARMIN_MCP.md` for authentication, privacy, and server configuration notes.
 
 ## Coaching Output Format
 

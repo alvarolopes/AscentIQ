@@ -19,6 +19,8 @@ activities/notes/*
 # Private athlete databases
 data/*.json
 !data/sample_*.json
+data/garmin_mcp_exports/
+data/garmin_mcp_snapshot*.json
 
 # Generated private machine-readable outputs
 analysis/**/*.json
