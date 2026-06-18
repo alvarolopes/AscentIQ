@@ -95,7 +95,7 @@ python scripts\fetch_garmin_mcp_snapshot.py `
   @detailArgs
 
 Write-Host "Importing snapshot into local AscentIQ history..." -ForegroundColor Cyan
-python scripts\import_garmin_mcp_snapshot.py --input $snapshot
+python scripts\import_garmin_mcp_snapshot.py --input $snapshot --since $StartDate
 
 Write-Host "Rebuilding models and charts..." -ForegroundColor Cyan
 python scripts\build_performance_management_model.py

@@ -169,9 +169,14 @@ def distance_km(row: dict[str, Any]) -> float | None:
     parsed = safe_float(value)
     if parsed is None:
         return None
-    if key and ("meter" in key.lower() or key.lower() == "distance_m"):
+    if key and key.lower() in {
+        "distance",
+        "distancemeters",
+        "distanceinmeters",
+        "distance_m",
+    }:
         return parsed / 1000.0
-    return parsed / 1000.0 if parsed > 1000 else parsed
+    return parsed
 
 
 def activity_type(row: dict[str, Any]) -> tuple[str, str]:

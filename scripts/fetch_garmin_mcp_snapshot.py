@@ -117,23 +117,62 @@ async def call_tool_safely(session: Any, tool_name: str, arguments: dict[str, An
         return {"error": str(exc), "tool": tool_name, "arguments": arguments or {}}
 
 
-async def fetch_all_activities(session: Any, args: argparse.Namespace) -> dict[str, Any]:
+def activity_calendar_date(item: Any) -> date | None:
+    if not isinstance(item, dict):
+        return None
+    for key in ("startTimeLocal", "startTimeGMT", "startTime", "calendarDate"):
+        value = item.get(key)
+        if not value:
+            continue
+        try:
+            return date.fromisoformat(str(value)[:10])
+        except ValueError:
+            continue
+    return None
+
+
+async def fetch_all_activities(
+    session: Any,
+    args: argparse.Namespace,
+    start_date: date,
+    end_date: date,
+) -> dict[str, Any]:
     start = 0
     pages: list[Any] = []
     total_items = 0
+    reached_start_date = False
     while start < args.max_activities:
         payload = await call_tool_safely(
             session,
             "get_activities",
             {"start": start, "limit": args.activity_page_size},
         )
-        pages.append({"start": start, "limit": args.activity_page_size, "payload": payload})
         if isinstance(payload, dict) and payload.get("error"):
+            pages.append({"start": start, "limit": args.activity_page_size, "payload": payload})
             break
         items = payload if isinstance(payload, list) else payload.get("result") if isinstance(payload, dict) else None
         if not isinstance(items, list) or not items:
+            pages.append({"start": start, "limit": args.activity_page_size, "payload": payload})
             break
-        total_items += len(items)
+
+        filtered_items = []
+        for item in items:
+            item_date = activity_calendar_date(item)
+            if item_date is None or start_date <= item_date <= end_date:
+                filtered_items.append(item)
+            if item_date is not None and item_date < start_date:
+                reached_start_date = True
+
+        pages.append(
+            {
+                "start": start,
+                "limit": args.activity_page_size,
+                "payload": filtered_items,
+            }
+        )
+        total_items += len(filtered_items)
+        if reached_start_date:
+            break
         if len(items) < args.activity_page_size:
             break
         start += args.activity_page_size
@@ -212,7 +251,7 @@ async def capture(args: argparse.Namespace) -> int:
                 return 0
 
             if args.all_activities:
-                activities = await fetch_all_activities(session, args)
+                activities = await fetch_all_activities(session, args, start, end)
             else:
                 activities = await call_tool_safely(
                     session,
