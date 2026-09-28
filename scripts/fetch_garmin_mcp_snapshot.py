@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--all-activities", action="store_true", help="Fetch activities with paginated get_activities until empty.")
     parser.add_argument("--activity-page-size", type=int, default=100)
     parser.add_argument("--max-activities", type=int, default=5000)
+    parser.add_argument("--known-activity-history", help="Local training history; omit already imported Garmin activity IDs.")
     parser.add_argument("--sleep-tool", default="get_sleep_data")
     parser.add_argument("--skip-sleep", action="store_true")
     parser.add_argument(
@@ -59,6 +60,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-detail-activities", type=int, default=0)
     parser.add_argument("--list-tools", action="store_true", help="Only list server tools and write no snapshot.")
+    parser.add_argument("--skip-profile", action="store_true", help="Skip default profile endpoints.")
     return parser.parse_args()
 
 
@@ -131,16 +133,57 @@ def activity_calendar_date(item: Any) -> date | None:
     return None
 
 
+def known_activity_ids(path: str | None) -> set[int]:
+    if not path:
+        return set()
+    history = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    if not isinstance(history, list):
+        raise ValueError("Known activity history must be a JSON list")
+    ids: set[int] = set()
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        try:
+            ids.add(int(item.get("garmin_activity_id")))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+def activity_id(item: Any) -> int | None:
+    if not isinstance(item, dict):
+        return None
+    for key in ("activityId", "activity_id", "id"):
+        try:
+            return int(item.get(key))
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def filter_known_activities(activities: Any, known_ids: set[int]) -> Any:
+    if isinstance(activities, list):
+        return [item for item in activities if activity_id(item) not in known_ids]
+    if isinstance(activities, dict):
+        for key in ("result", "activities", "items"):
+            if isinstance(activities.get(key), list):
+                return {**activities, key: filter_known_activities(activities[key], known_ids)}
+    return activities
+
+
 async def fetch_all_activities(
     session: Any,
     args: argparse.Namespace,
     start_date: date,
     end_date: date,
+    known_ids: set[int] | None = None,
 ) -> dict[str, Any]:
     start = 0
     pages: list[Any] = []
     total_items = 0
     reached_start_date = False
+    known_ids = known_ids or set()
+    skipped_known = 0
     while start < args.max_activities:
         payload = await call_tool_safely(
             session,
@@ -148,10 +191,11 @@ async def fetch_all_activities(
             {"start": start, "limit": args.activity_page_size},
         )
         if isinstance(payload, dict) and payload.get("error"):
-            pages.append({"start": start, "limit": args.activity_page_size, "payload": payload})
-            break
+            raise RuntimeError(f"Garmin activity listing failed: {payload['error']}")
         items = payload if isinstance(payload, list) else payload.get("result") if isinstance(payload, dict) else None
-        if not isinstance(items, list) or not items:
+        if not isinstance(items, list):
+            raise RuntimeError("Garmin activity listing returned an unexpected format")
+        if not items:
             pages.append({"start": start, "limit": args.activity_page_size, "payload": payload})
             break
 
@@ -159,7 +203,10 @@ async def fetch_all_activities(
         for item in items:
             item_date = activity_calendar_date(item)
             if item_date is None or start_date <= item_date <= end_date:
-                filtered_items.append(item)
+                if activity_id(item) in known_ids:
+                    skipped_known += 1
+                else:
+                    filtered_items.append(item)
             if item_date is not None and item_date < start_date:
                 reached_start_date = True
 
@@ -176,7 +223,7 @@ async def fetch_all_activities(
         if len(items) < args.activity_page_size:
             break
         start += args.activity_page_size
-    return {"mode": "paginated", "total_items_seen": total_items, "pages": pages}
+    return {"mode": "paginated", "total_items_seen": total_items, "known_items_skipped": skipped_known, "pages": pages}
 
 
 def walk_dicts(payload: Any) -> list[dict[str, Any]]:
@@ -194,19 +241,19 @@ def walk_dicts(payload: Any) -> list[dict[str, Any]]:
 def extract_activity_ids(payload: Any) -> list[int]:
     ids: list[int] = []
     seen: set[int] = set()
-    for row in walk_dicts(payload):
-        for key in ("activityId", "activity_id", "id"):
-            value = row.get(key)
-            if value is None:
-                continue
-            try:
-                activity_id = int(value)
-            except (TypeError, ValueError):
-                continue
-            if activity_id not in seen:
-                seen.add(activity_id)
-                ids.append(activity_id)
-            break
+    if isinstance(payload, dict) and payload.get("mode") == "paginated":
+        rows = [item for page in payload.get("pages", []) for item in page.get("payload", []) if isinstance(item, dict)]
+    elif isinstance(payload, dict):
+        rows = next((payload[key] for key in ("result", "activities", "items") if isinstance(payload.get(key), list)), [])
+    elif isinstance(payload, list):
+        rows = payload
+    else:
+        rows = []
+    for row in rows:
+        current_id = activity_id(row)
+        if current_id is not None and current_id not in seen:
+            seen.add(current_id)
+            ids.append(current_id)
     return ids
 
 
@@ -237,6 +284,9 @@ async def capture(args: argparse.Namespace) -> int:
 
     end = date.fromisoformat(args.end_date) if args.end_date else date.today()
     start = date.fromisoformat(args.start_date) if args.start_date else end - timedelta(days=14)
+    if start > end:
+        raise ValueError("Start date must be on or before end date")
+    known_ids = known_activity_ids(args.known_activity_history)
     server_args = args.server_arg if args.server_arg is not None else ["mcp-garmin"]
     env = os.environ.copy()
     params = StdioServerParameters(command=args.server_command, args=server_args, env=env)
@@ -251,13 +301,16 @@ async def capture(args: argparse.Namespace) -> int:
                 return 0
 
             if args.all_activities:
-                activities = await fetch_all_activities(session, args, start, end)
+                activities = await fetch_all_activities(session, args, start, end, known_ids)
             else:
                 activities = await call_tool_safely(
                     session,
                     args.activity_tool,
                     {"start_date": start.isoformat(), "end_date": end.isoformat()},
                 )
+                if isinstance(activities, dict) and activities.get("error"):
+                    raise RuntimeError(f"Garmin activity listing failed: {activities['error']}")
+                activities = filter_known_activities(activities, known_ids)
             snapshot: dict[str, Any] = {
                 "source": "garmin_mcp",
                 "server_command": args.server_command,
@@ -290,8 +343,9 @@ async def capture(args: argparse.Namespace) -> int:
                     {"start_date": start.isoformat(), "end_date": end.isoformat()},
                 )
 
-            for tool_name in dict.fromkeys(args.profile_tool):
-                snapshot["profile"][tool_name] = await call_tool_safely(session, tool_name)
+            if not args.skip_profile:
+                for tool_name in dict.fromkeys(args.profile_tool):
+                    snapshot["profile"][tool_name] = await call_tool_safely(session, tool_name)
 
             if args.activity_detail_tool and args.max_detail_activities > 0:
                 snapshot["activity_details"] = await fetch_activity_details(session, activities, args)

@@ -1,0 +1,38 @@
+name: ascentiq
+services:
+  api:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    env_file: .env
+    environment:
+      DASHBOARD_RUNTIME: /app/runtime/dashboard
+      DASHBOARD_SCHEDULE_ENABLED: "true"
+      GARMIN_MCP_COMMAND: mcp-garmin
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./data:/app/data
+      - ./analysis:/app/analysis
+      - ./activities/notes/medical:/app/activities/notes/medical:ro
+      - ./runtime/dashboard:/app/runtime/dashboard
+      - garmin_auth:/home/athlete
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8788/api/health', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+  web:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile.web
+    ports:
+      - "127.0.0.1:8787:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  garmin_auth:

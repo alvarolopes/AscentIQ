@@ -21,6 +21,16 @@ This repository is intentionally portfolio-friendly: it can show the analytical 
 
 ## Example Dashboards
 
+### Local Private Dashboard
+
+An authenticated React portal provides running, strength, body and medical data
+views with a dark, centered interface. Python owns incremental Garmin/Hevy
+imports and training-load calculations. Typst produces dated HTML reports and
+training-only PDFs. The source code does not include real athlete records,
+provider credentials, screenshots, or generated reports.
+
+See [dashboard setup, architecture and privacy](dashboard/README.md).
+
 ### Performance Management Model
 
 ![Performance Management Model](analysis/context/performance_management_chart.svg)

@@ -139,6 +139,42 @@ def elevation_gain(item: dict[str, Any]) -> float:
     return direct or 0.0
 
 
+def strength_muscular_load(item: dict[str, Any]) -> tuple[float, dict[str, Any] | None]:
+    if item.get("type") != "Weight Training":
+        return 0.0, None
+
+    total_sets = as_float(item.get("hevy_total_sets")) or 0.0
+    working_sets = as_float(item.get("hevy_working_sets")) or total_sets
+    total_reps = as_float(item.get("hevy_total_reps")) or 0.0
+    total_volume = as_float(item.get("hevy_total_volume_kg")) or 0.0
+    if not total_sets and not total_volume:
+        return 0.0, None
+
+    classification = str(item.get("hevy_classification") or item.get("classification_hint") or "").lower()
+    classification_multiplier = {
+        "legs": 1.25,
+        "perna": 1.25,
+        "pull": 0.90,
+        "push": 0.95,
+        "core": 0.70,
+    }.get(classification, 0.90)
+
+    set_component = working_sets * 0.32
+    rep_component = total_reps * 0.012
+    # Tonnage matters for muscular fatigue, but log scaling keeps huge leg days from exploding ATL/CTL.
+    volume_component = math.log1p(total_volume) * 1.15 if total_volume > 0 else 0.0
+    muscular_load = (set_component + rep_component + volume_component) * classification_multiplier
+
+    return muscular_load, {
+        "hevy_classification": item.get("hevy_classification"),
+        "hevy_total_sets": int(total_sets) if total_sets else None,
+        "hevy_working_sets": int(working_sets) if working_sets else None,
+        "hevy_total_reps": int(total_reps) if total_reps else None,
+        "hevy_total_volume_kg": round(total_volume, 1) if total_volume else None,
+        "strength_muscular_load": round(muscular_load, 1),
+    }
+
+
 def estimate_activity_load(item: dict[str, Any], resting_hr: int, max_hr: int) -> dict[str, Any] | None:
     minutes = activity_duration_minutes(item)
     if not minutes:
@@ -158,8 +194,9 @@ def estimate_activity_load(item: dict[str, Any], resting_hr: int, max_hr: int) -
     if item.get("type") in {"Run", "Hike", "Stair-Stepper"}:
         vertical_bonus = elevation_gain(item) / 100.0 * 2.5
 
-    load = trimp * type_multiplier(item) + vertical_bonus
-    return {
+    strength_bonus, strength_details = strength_muscular_load(item)
+    load = trimp * type_multiplier(item) + vertical_bonus + strength_bonus
+    result = {
         "date": item.get("date"),
         "name": item.get("name"),
         "type": item.get("type"),
@@ -170,8 +207,14 @@ def estimate_activity_load(item: dict[str, Any], resting_hr: int, max_hr: int) -
         "elevation_gain_m": round(elevation_gain(item), 1),
         "hrr": round(hrr, 3),
         "hrr_source": hrr_source,
+        "cardio_load_component": round(trimp * type_multiplier(item), 1),
+        "vertical_bonus": round(vertical_bonus, 1),
+        "strength_muscular_load": round(strength_bonus, 1),
         "estimated_load": round(load, 1),
     }
+    if strength_details:
+        result.update(strength_details)
+    return result
 
 
 def collect_activities() -> list[dict[str, Any]]:
@@ -256,7 +299,7 @@ def build_daily_loads(activities: list[dict[str, Any]], sleep: dict[str, Any] | 
         "fitness_time_constant_days": FITNESS_DAYS,
         "fatigue_time_constant_days": FATIGUE_DAYS,
         "ramp_window_days": RAMP_DAYS,
-        "load_model": "TRIMP-like athlete load with type multiplier and vertical bonus",
+        "load_model": "TRIMP-like athlete load with type multiplier, vertical bonus and Hevy strength muscular load when available",
     }
     return daily, meta
 
@@ -344,6 +387,14 @@ def build_recovery_summary(sleep: dict[str, Any] | None, reference_date: str | N
             "duration_raw": latest_weekly.get("average_duration_raw"),
             "previous_week_score": previous,
             "score_delta_vs_previous_week": delta,
+        }
+
+    if reference_date:
+        return {
+            "score": None,
+            "status": "unknown",
+            "basis": "stale_sleep_score" if latest_daily and latest_daily.get("score") is not None else "sleep_without_score",
+            "last_scored_date": latest_daily.get("date") if latest_daily else None,
         }
 
     if latest_daily and latest_daily.get("score") is not None:
@@ -494,9 +545,15 @@ def write_markdown(summary: dict[str, Any], daily: list[dict[str, Any]]) -> None
     last_activities = []
     for row in daily[-7:]:
         for activity in row["activities"]:
-            last_activities.append(
-                f"- {row['date']} | {activity['type']} | {activity['name']} | load {activity['estimated_load']}"
-            )
+            line = f"- {row['date']} | {activity['type']} | {activity['name']} | load {activity['estimated_load']}"
+            if activity.get("type") == "Weight Training" and activity.get("hevy_total_sets"):
+                line += (
+                    f" | Hevy: {activity.get('hevy_classification')}, "
+                    f"{activity.get('hevy_total_sets')} series, "
+                    f"{activity.get('hevy_total_volume_kg')} kg, "
+                    f"muscular {activity.get('strength_muscular_load')}"
+                )
+            last_activities.append(line)
 
     md = [
         "# Performance Management Model",
@@ -519,7 +576,7 @@ def write_markdown(summary: dict[str, Any], daily: list[dict[str, Any]]) -> None
         "- Form = Fitness - Fatigue.",
         "- Ramp Rate = variacao da Fitness nos ultimos 7 dias.",
         "- Recovery = leitura de sono mais recente disponivel, priorizando media semanal quando nao ha diario atualizado.",
-        "- A carga diaria usa uma formula tipo TRIMP com FC media quando existe, multiplicador por modalidade e bonus pequeno para D+.",
+        "- A carga diaria usa uma formula tipo TRIMP com FC media quando existe, multiplicador por modalidade, bonus pequeno para D+ e bonus muscular Hevy em treinos de forca.",
         "",
         "## 3. Leitura de treinador",
     ]
@@ -534,7 +591,7 @@ def write_markdown(summary: dict[str, Any], daily: list[dict[str, Any]]) -> None
         md.append("- O modelo esta lendo frescor. Bom para prova, mas se durar demais pode indicar carga baixa.")
 
     if summary["ramp_status"] == "going_hard":
-        md.append("- A rampa semanal esta alta; para Arequipa isso so e bom se vier acompanhada de sono e pernas respondendo.")
+        md.append("- A rampa semanal esta alta; para o objetivo atual isso so e bom se vier acompanhada de sono e pernas respondendo.")
     elif summary["ramp_status"] == "building":
         md.append("- A rampa semanal esta em construcao: bom sinal para evoluir sem pressa.")
     elif summary["ramp_status"] == "recovering":
