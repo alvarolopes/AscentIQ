@@ -1,5 +1,19 @@
 name: ascentiq
 services:
+  db:
+    image: postgres:17@sha256:d74eeac9a635390a49bc21bd49fccd973de707e2a53a76ac49b552b8712ec46f
+    environment:
+      POSTGRES_USER: ascentiq_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Configure private database password}
+      POSTGRES_DB: ascentiq
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ascentiq_admin -d ascentiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
   api:
     build:
       context: .
@@ -10,12 +24,17 @@ services:
       DASHBOARD_SCHEDULE_ENABLED: "true"
       GARMIN_MCP_COMMAND: mcp-garmin
       TZ: America/Sao_Paulo
+      POSTGRES_ADMIN_PASSWORD: ""
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data:ro
       - ./analysis:/app/analysis
-      - ./activities/notes/medical:/app/activities/notes/medical:ro
+      - ./activities:/app/activities:ro
       - ./runtime/dashboard:/app/runtime/dashboard
+      - ./runtime/backups:/app/runtime/backups
       - garmin_auth:/home/athlete
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     init: true
     healthcheck:
@@ -24,6 +43,20 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
+  db-tools:
+    profiles: ["maintenance"]
+    image: ascentiq-api
+    env_file: .env
+    volumes:
+      - ./data:/app/data:ro
+      - ./analysis:/app/analysis:ro
+      - ./activities:/app/activities:ro
+      - ./runtime/dashboard:/app/runtime/dashboard
+      - ./runtime/backups:/app/runtime/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "dashboard.database_cli"]
   web:
     build:
       context: .
@@ -36,3 +69,4 @@ services:
     restart: unless-stopped
 volumes:
   garmin_auth:
+  postgres_data:

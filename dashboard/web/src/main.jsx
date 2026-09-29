@@ -96,7 +96,7 @@ function App() {
       <div className="brand"><Peak/><span>AscentIQ<small>ATHLETE INTELLIGENCE</small></span></div>
       <div className="sidebar-label">SEU PAINEL</div>
       <nav>{nav.map(([id,label,n])=><button key={id} className={tab===id?'active':''} onClick={()=>{setTab(id);window.scrollTo({top:0,behavior:'smooth'});}}><span>{n}</span>{label}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="avatar">{(data.athlete.name || 'Atleta').split(' ').filter(Boolean).slice(0,2).map(part=>part[0]).join('')}</div><strong>{data.athlete.name}</strong><span>Endurance & alta montanha</span><button onClick={logout}>Sair do painel</button><div className="privacy">Dados privados · ambiente local</div></div>
+      <div className="sidebar-bottom"><div className="avatar">{(data.athlete.name||"A").split(/\s+/).filter(Boolean).slice(0,2).map(part=>part[0]).join("").toUpperCase()}</div><strong>{data.athlete.name}</strong><span>Endurance & alta montanha</span><button onClick={logout}>Sair do painel</button><div className="privacy">Dados privados · ambiente local</div></div>
     </aside>
     <main>
       <header className="topbar"><span>ATLETA / <strong>{nav.find(n=>n[0]===tab)?.[1].toUpperCase()}</strong></span><div><span className="sync-date"><i/>Base de treinos: {date(data.freshness.activities)}</span><button className="primary" disabled={busy} onClick={()=>onJob('sync')}>{busy?'Atualizando…':'Atualizar treinos'}</button></div></header>
@@ -113,7 +113,7 @@ function App() {
         {tab==='body'&&<Body data={data}/>}
         {tab==='medical'&&<Medical data={data}/>}
         {tab==='reports'&&<Reports {...{reports,jobs,onJob,busy}}/>}
-        <footer>ASCENTIQ <span>Fonte de verdade: seus registros. Cálculos locais. Dados de saúde privados.</span><span>Snapshot: {new Date(data.generated_at).toLocaleString('pt-BR')}</span></footer>
+        <footer>ASCENTIQ <span>Fonte de verdade: seus registros. Cálculos locais. Dados de saúde privados.</span><span>{data.storage?.backend==='postgres'?'PostgreSQL local · ':''}Snapshot: {new Date(data.generated_at).toLocaleString('pt-BR')}</span></footer>
       </div>
     </main>
   </div>;

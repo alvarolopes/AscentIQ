@@ -8,14 +8,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
+from dashboard.repository import dataset_bytes, read_dataset, repository_context, revision_metadata
 
 ROOT = Path(__file__).resolve().parents[1]
 TZ = ZoneInfo("America/Sao_Paulo")
 
 
 def load(root: Path, name: str, default: Any = None) -> Any:
-    path = root / "data" / f"{name}.json"
-    return json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else default
+    return read_dataset(root, f"data/{name}.json", default)
 
 
 def fold(value: str) -> str:
@@ -108,6 +108,16 @@ def medical_documents(root: Path) -> dict[str, Path]:
 
 
 def build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
+    with repository_context(root):
+        result = _build_snapshot(root, today)
+        metadata = revision_metadata()
+        if metadata:
+            result["storage"] = {key:value for key,value in metadata.items() if key != "warnings"}
+            result["sync_warnings"] = metadata["warnings"]
+        return result
+
+
+def _build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
     today = today or datetime.now(TZ).date()
     history = load(root, "training_history", [])
     hevy = {x["hevy_workout_id"]: x for x in load(root, "hevy_workouts", [])}
@@ -176,11 +186,10 @@ def build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
         insights.append(f"Composição corporal é a avaliação de {body['reference_date']}; não é uma estimativa do corpo de hoje.")
     digest = hashlib.sha256()
     for name in ("training_history", "hevy_workouts", "strength_training_consolidated", "body_metrics", "medical_history", "performance_management_model"):
-        path = root / "data" / f"{name}.json"
-        if path.exists():
-            digest.update(path.read_bytes())
-    race_path = root / "analysis" / "races" / "last_10_race_performance_index.json"
-    race_index = json.loads(race_path.read_text(encoding="utf-8-sig")) if race_path.exists() else {}
+        raw = dataset_bytes(root, f"data/{name}.json")
+        if raw is not None:
+            digest.update(raw)
+    race_index = read_dataset(root, "analysis/races/last_10_race_performance_index.json", {})
     return {"schema_version": 1, "model_version": "athlete-load-42-7/v1", "generated_at": datetime.now(TZ).isoformat(timespec="seconds"),
             "as_of": today.isoformat(), "source_digest": digest.hexdigest(), "freshness": freshness,
             "athlete": {"name": profile.get("name") or "Atleta", "age": profile.get("age"), "current_goal": profile.get("current_goal"),

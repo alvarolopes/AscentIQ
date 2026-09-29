@@ -11,6 +11,7 @@ from pathlib import Path
 
 from dashboard.pipeline import publish_report, rebuild, sync_sources
 from dashboard.snapshot import ROOT, TZ, build_snapshot
+from dashboard.repository import operational_db, postgres_enabled
 
 
 @contextmanager
@@ -44,7 +45,7 @@ def schedule_slot(current: datetime) -> datetime:
 
 
 class JobManager:
-    def __init__(self, runtime: Path, root: Path = ROOT):
+    def __init__(self, runtime: Path, root: Path = ROOT, *, recover_interrupted: bool = True):
         self.runtime, self.root = runtime, root
         runtime.mkdir(parents=True, exist_ok=True)
         self.stop = threading.Event()
@@ -52,26 +53,22 @@ class JobManager:
         with self.db() as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, mode TEXT, status TEXT, created_at TEXT, finished_at TEXT, message TEXT, warnings TEXT, schedule_key TEXT UNIQUE)")
             conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
-            conn.execute("UPDATE jobs SET status='failed', message='Processo interrompido; execute novamente.' WHERE status='running'")
+            if recover_interrupted:
+                conn.execute("UPDATE jobs SET status='failed', message='Processo interrompido; execute novamente.' WHERE status='running'")
             slot = schedule_slot(datetime.now(TZ)).isoformat()
             conn.execute("INSERT OR IGNORE INTO settings VALUES ('scheduled_slot', ?)", (slot,))
 
     @contextmanager
     def db(self):
-        conn = sqlite3.connect(self.runtime / "jobs.sqlite", timeout=15)
-        conn.row_factory = sqlite3.Row
-        try:
-            with conn:
-                yield conn
-        finally:
-            conn.close()
+        with operational_db(self.runtime, "jobs", self.root) as conn:
+            yield conn
 
     def list(self) -> list[dict]:
         with self.db() as conn:
             return [dict(x) for x in conn.execute("SELECT * FROM jobs ORDER BY created_at DESC, rowid DESC LIMIT 30")]
 
     def enqueue(self, mode: str, schedule_key: str | None = None) -> str:
-        if mode not in {"generate", "sync"}:
+        if mode not in {"generate", "sync", "sync-garmin", "sync-hevy"}:
             raise ValueError("Modo inválido")
         with self.db() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -88,10 +85,19 @@ class JobManager:
                          (status, message, json.dumps(warnings or [], ensure_ascii=False), now() if status in {"completed", "partial", "failed"} else None, job_id))
 
     def process(self, job: dict):
+        with self.db() as conn:
+            claimed = conn.execute("UPDATE jobs SET status='running' WHERE id=? AND status='queued' RETURNING id",(job["id"],)).fetchone()
+        if not claimed:
+            return
         try:
             with process_lock(self.runtime / "update.lock"):
                 progress = lambda message: self.update(job["id"], "running", message)
                 progress("Preparando dados")
+                if postgres_enabled(self.root):
+                    from dashboard.database_pipeline import run_database_pipeline
+                    warnings = run_database_pipeline(job, self.root, self.runtime, progress)
+                    self.update(job["id"], "partial" if warnings else "completed", "Relatorio publicado" if not warnings else "Relatorio publicado com fontes parciais", warnings)
+                    return
                 warnings = sync_sources(self.root, progress) if job["mode"] == "sync" else []
                 rebuild(self.root, progress)
                 snapshot = build_snapshot(self.root)

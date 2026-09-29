@@ -14,7 +14,12 @@ Open http://localhost:8787. The default username is `athlete`; the generated pas
 `runtime/dashboard/access.txt`. This file is private, ignored by Git, and must not
 be shared or committed. Authentication is separate from Garmin and Hevy.
 
-From the athlete-agent directory:
+For PostgreSQL setup and the safe migration/restore workflow, read
+[Database Storage And Recovery](../docs/DATABASE.md) first. Configure the two
+private database passwords in `.env`, initialize the database, import and verify
+your data, then enable `DATABASE_BACKEND=postgres` before starting the API.
+
+From the project directory after database setup:
 
 ```powershell
 docker compose up -d --build
@@ -64,7 +69,8 @@ weekly run after a subsequent restart. The first start generates from the local
 base instead of silently downloading an entire remote history. Set
 `DASHBOARD_SCHEDULE_ENABLED=false` in Compose to disable scheduling.
 
-Only one update can run at a time. Job state is persisted in SQLite. A failed
+Only one update can run at a time. In PostgreSQL mode, job and session state are
+stored in the database; SQLite is retained only for legacy JSON recovery. A failed
 render does not replace the previous successful report: HTML and PDF must both
 validate before the latest-report pointer is atomically replaced.
 

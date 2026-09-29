@@ -1,7 +1,7 @@
 FROM ghcr.io/typst/typst:0.15.1 AS typst
 FROM python:3.14-slim
 ENV PYTHONUNBUFFERED=1 PYTHONUTF8=1 TZ=America/Sao_Paulo HOME=/home/athlete
-RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core tzdata postgresql-client && rm -rf /var/lib/apt/lists/*
 COPY --from=typst /bin/typst /usr/local/bin/typst
 WORKDIR /app
 COPY dashboard/requirements.txt /tmp/requirements.txt

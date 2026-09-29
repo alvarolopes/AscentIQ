@@ -52,3 +52,6 @@ tmp/
 *.p12
 dashboard/web/node_modules/
 dashboard/web/dist/
+*.dump
+*.tar.gz.enc
+recovery.key

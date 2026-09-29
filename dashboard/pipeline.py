@@ -23,12 +23,13 @@ def run_script(name: str, *arguments: str, root: Path = ROOT, progress=lambda _:
         raise RuntimeError(f"Falha na etapa {name}; código {result.returncode}. Verifique a conexão e as credenciais locais.")
 
 
-def sync_sources(root: Path = ROOT, progress=lambda _: None) -> list[str]:
+def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", "hevy")) -> list[str]:
     from scripts.env_utils import load_dotenv
     from scripts.compute_garmin_sync_window import sync_start
 
     load_dotenv(root / ".env")
-    missing = [key for key in ("GARMIN_EMAIL", "GARMIN_PASSWORD", "HEVY_API_KEY") if not os.environ.get(key)]
+    required = (["GARMIN_EMAIL", "GARMIN_PASSWORD"] if "garmin" in sources else []) + (["HEVY_API_KEY"] if "hevy" in sources else [])
+    missing = [key for key in required if not os.environ.get(key)]
     if missing:
         raise RuntimeError("Preencha as chaves locais: " + ", ".join(missing))
     today = datetime.now(TZ).date()
@@ -45,7 +46,12 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None) -> list[str]:
     for tool in ("get_activity", "get_activity_details", "get_activity_splits", "get_activity_hr_zones", "get_activity_exercise_sets"):
         args += ["--activity-detail-tool", tool]
     warnings = []
-    for source in ("garmin", "hevy"):
+    for source in sources:
+        original_datasets = {p:p.read_bytes() for p in (root / "data").glob("*.json")}
+        original_history = (root / "data" / "training_history.json").read_bytes()
+        original_hevy = {p: p.read_bytes() for p in (root / "data").glob("*hevy*.json")}
+        consolidated = root / "data" / "strength_training_consolidated.json"
+        original_consolidated = consolidated.read_bytes() if consolidated.exists() else None
         try:
             if source == "garmin":
                 run_script("fetch_garmin_mcp_snapshot.py", *args, root=root, progress=progress)
@@ -58,6 +64,13 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None) -> list[str]:
                 run_script("fetch_hevy_workouts.py", "--output", str(output_hevy), "--incremental", "--no-archive", root=root, progress=progress)
                 run_script("import_hevy_workouts.py", "--input", str(output_hevy), "--format", "api", root=root, progress=progress)
         except (RuntimeError, subprocess.TimeoutExpired):
+            for p, raw in original_datasets.items():
+                p.write_bytes(raw)
+            (root / "data" / "training_history.json").write_bytes(original_history)
+            for p, raw in original_hevy.items():
+                p.write_bytes(raw)
+            if original_consolidated is not None:
+                consolidated.write_bytes(original_consolidated)
             warnings.append(f"Importação {source} não concluída. Os dados anteriores dessa fonte foram preservados.")
     return warnings
 
@@ -117,7 +130,7 @@ def training_snapshot(snapshot: dict) -> dict:
     return result
 
 
-def publish_report(snapshot: dict, job_id: str, runtime: Path, root: Path = ROOT) -> dict:
+def publish_report(snapshot: dict, job_id: str, runtime: Path, root: Path = ROOT, activate: bool = True) -> dict:
     staging = runtime / "staging" / job_id
     staging.mkdir(parents=True, exist_ok=False)
     try:
@@ -145,9 +158,10 @@ def publish_report(snapshot: dict, job_id: str, runtime: Path, root: Path = ROOT
         archive = runtime / "reports" / job_id
         archive.parent.mkdir(parents=True, exist_ok=True)
         staging.replace(archive)
-        latest = runtime / "latest.tmp"
-        latest.write_text(json.dumps({"id": job_id}), encoding="utf-8")
-        latest.replace(runtime / "latest.json")
+        if activate:
+            latest = runtime / "latest.tmp"
+            latest.write_text(json.dumps({"id": job_id}), encoding="utf-8")
+            latest.replace(runtime / "latest.json")
         return metadata
     except Exception:
         # A failed compile never changes the published report; staging remains for local diagnosis.

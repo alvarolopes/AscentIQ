@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from dashboard.jobs import JobManager
 from dashboard.snapshot import ROOT, build_snapshot, medical_documents
+from dashboard.repository import connect, operational_db, postgres_enabled
 
 RUNTIME = Path(os.environ.get("DASHBOARD_RUNTIME", str(ROOT / "runtime" / "dashboard")))
 COOKIE = "ascentiq_session"
@@ -52,12 +53,8 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @contextmanager
     def sessions():
-        conn = sqlite3.connect(session_db, timeout=10)
-        try:
-            with conn:
-                yield conn
-        finally:
-            conn.close()
+        with operational_db(runtime, "sessions", root) as conn:
+            yield conn
 
     with sessions() as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS sessions (digest TEXT PRIMARY KEY, expires REAL)")
@@ -94,6 +91,9 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @app.get("/api/health")
     def health():
+        if postgres_enabled(root):
+            with connect() as conn:
+                conn.execute("SELECT 1")
         return {"status": "ok"}
 
     @app.post("/api/auth/login")
@@ -133,6 +133,8 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @app.get("/api/dashboard")
     def dashboard():
+        if postgres_enabled(root):
+            return build_snapshot(root)
         path = latest_path()
         if path:
             return json.loads((path / "snapshot.json").read_text(encoding="utf-8"))
@@ -156,6 +158,10 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @app.get("/api/reports")
     def reports():
+        if postgres_enabled(root):
+            with connect() as conn:
+                items = [row[0] for row in conn.execute("SELECT metadata FROM athlete.reports ORDER BY created_at DESC,id DESC")]
+            return {"reports": [item for item in items if item.get("pdf_scope") == "training"]}
         paths = sorted((runtime / "reports").glob("*/meta.json"), reverse=True)
         items = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
         return {"reports": [item for item in items if item.get("pdf_scope") == "training"]}
@@ -164,6 +170,10 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     def report_pdf(report_id: str):
         if not all(c.isalnum() or c == "-" for c in report_id):
             raise HTTPException(404)
+        if postgres_enabled(root):
+            with connect() as conn:
+                if not conn.execute("SELECT 1 FROM athlete.reports WHERE id=%s",(report_id,)).fetchone():
+                    raise HTTPException(404)
         path = runtime / "reports" / report_id / "report.pdf"
         meta = path.parent / "meta.json"
         if not path.is_file() or not meta.is_file() or json.loads(meta.read_text(encoding="utf-8")).get("pdf_scope") != "training":
@@ -174,6 +184,10 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     def report_html(report_id: str):
         if not all(c.isalnum() or c == "-" for c in report_id):
             raise HTTPException(404)
+        if postgres_enabled(root):
+            with connect() as conn:
+                if not conn.execute("SELECT 1 FROM athlete.reports WHERE id=%s",(report_id,)).fetchone():
+                    raise HTTPException(404)
         path = runtime / "reports" / report_id / "dashboard.html"
         if not path.is_file():
             raise HTTPException(404)
