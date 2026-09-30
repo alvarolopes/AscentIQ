@@ -76,6 +76,9 @@ main { width: 100%; margin: 0; }
 .sync-date { font: 11px var(--sans); }
 .sync-date i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 6px; }
 .content { padding: 22px 24px; }
+.current-goal { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid var(--green); border-radius: 6px; background: var(--surface); }
+.current-goal strong { font-size: 14px; }
+.current-goal > span:last-child { color: var(--muted); font-size: 11px; }
 .report-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
 .report-links .button { font-size: 11px; }
 .report-links .download { color: var(--ink); }
