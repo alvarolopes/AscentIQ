@@ -79,8 +79,8 @@ def run_database_pipeline(job, root, runtime, progress=lambda _: None, replaceme
                             target = root / path.relative_to(stage)
                             target.parent.mkdir(parents=True,exist_ok=True)
                             shutil.copyfile(path,target)
-                except OSError:
-                    warnings.append("Treinos publicados; algumas copias locais de arquivos derivados nao foram atualizadas.")
+                except OSError as exc:
+                    warnings.append(f"Treinos publicados; copia auxiliar falhou ({Path(exc.filename or 'desconhecido').name}, errno {exc.errno}).")
                 try:
                     backup_if_due(root,runtime,progress)
                 except Exception:
