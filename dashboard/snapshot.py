@@ -139,15 +139,17 @@ def _build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
     activities.sort(key=lambda x: (x.get("date") or "", x.get("date_time") or ""), reverse=True)
     strengths = []
     for row in strength:
-        workout = hevy.get(row.get("hevy_workout_id"), {})
+        workout_ids = row.get("hevy_workout_ids") or ([row["hevy_workout_id"]] if row.get("hevy_workout_id") else [])
+        exercises = [exercise for workout_id in workout_ids for exercise in hevy.get(workout_id, {}).get("exercises", [])]
         strengths.append({
             "id": row.get("hevy_workout_id") or row.get("garmin_activity_id") or f"strength-{len(strengths)}",
             "date": row.get("date"), "title": row.get("hevy_title") or "Força / Garmin",
             "classification": row.get("classification"), "match_status": row.get("garmin_match_status"),
             "duration": row.get("garmin_elapsed_time") or row.get("hevy_duration"), "avg_hr": row.get("garmin_avg_hr"),
+            "max_hr": row.get("garmin_max_hr"), "garmin_activity_ids": row.get("garmin_activity_ids") or ([row["garmin_activity_id"]] if row.get("garmin_activity_id") else []),
             "sets": row.get("hevy_total_sets"), "working_sets": row.get("hevy_working_sets"),
             "reps": row.get("hevy_total_reps"), "volume_kg": row.get("hevy_total_volume_kg"),
-            "exercises": workout.get("exercises", []), "exercise_count": row.get("hevy_exercise_count"),
+            "exercises": exercises, "exercise_count": row.get("hevy_exercise_count"),
         })
     strengths.sort(key=lambda x: x.get("date") or "", reverse=True)
     model = load(root, "performance_management_model", {})

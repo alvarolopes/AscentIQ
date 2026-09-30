@@ -350,6 +350,82 @@ def build_garmin_strength_index(training_history: list[dict[str, Any]]) -> list[
     return rows
 
 
+def deduplicate_legacy_strength(training_history: list[dict[str, Any]]) -> int:
+    """Fold date-only legacy exports into an equivalent timed Garmin record."""
+    removed: set[int] = set()
+    for index, legacy in enumerate(training_history):
+        if legacy.get("type") != "Weight Training" or legacy.get("date_time"):
+            continue
+        try:
+            seconds = sum(int(value) * factor for value, factor in zip(str(legacy.get("elapsed_time")).split(":"), (3600, 60, 1)))
+        except ValueError:
+            continue
+        if legacy.get("avg_hr") is None or len(str(legacy.get("elapsed_time")).split(":")) != 3:
+            continue
+        matches = []
+        for candidate in training_history:
+            if candidate is legacy or candidate.get("type") != "Weight Training" or candidate.get("date") != legacy.get("date") or not candidate.get("date_time"):
+                continue
+            if candidate.get("avg_hr") is None or len(str(candidate.get("elapsed_time")).split(":")) != 3:
+                continue
+            try:
+                other_seconds = sum(int(value) * factor for value, factor in zip(str(candidate.get("elapsed_time")).split(":"), (3600, 60, 1)))
+            except ValueError:
+                continue
+            if abs(seconds - other_seconds) <= 2 and abs(float(legacy["avg_hr"]) - float(candidate["avg_hr"])) <= 2:
+                matches.append(candidate)
+        if len(matches) != 1:
+            continue
+        canonical = matches[0]
+        for field in ("relative_effort", "training_load"):
+            if canonical.get(field) is None and legacy.get(field) is not None:
+                canonical[field] = legacy[field]
+        sources = [part for part in (str(canonical.get("source") or "") + "+" + str(legacy.get("source") or "")).split("+") if part]
+        canonical["source"] = "+".join(dict.fromkeys(sources))
+        removed.add(index)
+    training_history[:] = [row for index, row in enumerate(training_history) if index not in removed]
+    return len(removed)
+
+
+def consolidate_strength_days(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_day[row["date"]].append(row)
+    result = []
+    for day, sessions in sorted(by_day.items()):
+        if len(sessions) == 1:
+            result.append(sessions[0])
+            continue
+        hevy = [row for row in sessions if row.get("hevy_workout_id")]
+        primary = dict(hevy[0] if hevy else sessions[0])
+        garmin = [row for row in sessions if row.get("garmin_start_time") or row.get("garmin_activity_id")]
+        def duration_seconds(value: str | None) -> int:
+            try:
+                hours, minutes, seconds = map(int, str(value).split(":"))
+                return hours * 3600 + minutes * 60 + seconds
+            except (TypeError, ValueError):
+                return 0
+        total_seconds = sum(duration_seconds(row.get("garmin_elapsed_time")) for row in garmin)
+        weighted_hr = sum(duration_seconds(row.get("garmin_elapsed_time")) * float(row["garmin_avg_hr"]) for row in garmin if row.get("garmin_avg_hr") is not None)
+        measured_seconds = sum(duration_seconds(row.get("garmin_elapsed_time")) for row in garmin if row.get("garmin_avg_hr") is not None)
+        if total_seconds:
+            primary["garmin_elapsed_time"] = seconds_to_hms(total_seconds)
+        if measured_seconds:
+            primary["garmin_avg_hr"] = round(weighted_hr / measured_seconds)
+        maximums = [row["garmin_max_hr"] for row in garmin if row.get("garmin_max_hr") is not None]
+        if maximums:
+            primary["garmin_max_hr"] = max(maximums)
+        for field in ("hevy_exercise_count", "hevy_total_sets", "hevy_working_sets", "hevy_total_reps", "hevy_total_volume_kg"):
+            values = [row[field] for row in hevy if row.get(field) is not None]
+            if values:
+                primary[field] = round(sum(values), 1) if field == "hevy_total_volume_kg" else sum(values)
+        primary["hevy_workout_ids"] = [row["hevy_workout_id"] for row in hevy]
+        primary["garmin_activity_ids"] = [row["garmin_activity_id"] for row in garmin if row.get("garmin_activity_id")]
+        primary["source_sessions"] = sessions
+        result.append(primary)
+    return result
+
+
 def match_sessions(
     sessions: list[dict[str, Any]],
     training_history: list[dict[str, Any]],
@@ -377,7 +453,7 @@ def match_sessions(
             else:
                 delta_minutes = abs((garmin_start - hevy_start).total_seconds()) / 60.0
             candidates.append((delta_minutes, row))
-        candidates.sort(key=lambda pair: pair[0])
+        candidates.sort(key=lambda pair: (pair[1]["start"] is None, pair[0]))
 
         match_row = candidates[0][1] if candidates and candidates[0][0] <= tolerance_minutes else None
         match_delta = round(candidates[0][0], 1) if candidates else None
@@ -445,7 +521,7 @@ def match_sessions(
         )
 
     consolidated.sort(key=lambda item: (str(item.get("date") or ""), str(item.get("hevy_start_time") or item.get("garmin_start_time") or "")))
-    return consolidated, enriched_by_index
+    return consolidate_strength_days(consolidated), enriched_by_index
 
 
 HEVY_ENRICHMENT_FIELDS = {
@@ -602,6 +678,7 @@ def main() -> int:
     if not sessions and not args.allow_empty:
         raise ValueError("Hevy import contains no workouts; existing enrichment was left unchanged.")
     training_history = json.loads(TRAINING_HISTORY.read_text(encoding="utf-8-sig"))
+    deduplicate_legacy_strength(training_history)
     if not args.no_enrich_training_history:
         clear_hevy_enrichment(training_history)
     consolidated, enriched_by_index = match_sessions(sessions, training_history, args.match_tolerance_minutes)
