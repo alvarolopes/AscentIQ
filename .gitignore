@@ -35,3 +35,23 @@ analysis/context/ergo_test_extracted_text.txt
 Thumbs.db
 .idea/
 .vscode/
+
+# Keep local credentials, databases and generated reports private by default.
+.env
+.env.*
+!.env.example
+data/
+analysis/
+runtime/
+tmp/
+*.sqlite
+*.sqlite-*
+*.db
+*.pem
+*.key
+*.p12
+dashboard/web/node_modules/
+dashboard/web/dist/
+*.dump
+*.tar.gz.enc
+recovery.key

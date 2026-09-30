@@ -1,0 +1,9 @@
+# Use only after exporting the latest database revision to rollback-export.
+services:
+  api:
+    environment:
+      DATABASE_BACKEND: json
+    depends_on: !reset {}
+    volumes:
+      - ./runtime/dashboard/rollback-export/data:/app/data
+      - ./runtime/dashboard/rollback-export/analysis:/app/analysis

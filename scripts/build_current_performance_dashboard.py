@@ -15,6 +15,7 @@ VERT_INDEX = ROOT / "analysis" / "trainings" / "last_10_vertical_sessions_execut
 OUT_JSON = DATA_DIR / "current_performance_dashboard.json"
 OUT_MD = ANALYSIS_CONTEXT_DIR / "current_performance_dashboard.md"
 OUT_SVG = ANALYSIS_CONTEXT_DIR / "current_performance_dashboard.svg"
+SEASON_GOALS = DATA_DIR / "season_goals.json"
 
 BG = "#f7f4ed"
 CARD = "#fffdf8"
@@ -43,24 +44,19 @@ def score_band(score: float) -> str:
 
 
 def short_name(name: str) -> str:
-    mapping = {
-        "WTR Floresta da Tijuca": "WTR Rio",
-        "27Â° Meia Maratona Internacional do Rio de Janeiro": "27 Meia",
-        "27° Meia Maratona Internacional do Rio de Janeiro": "27 Meia",
-        "WTR Campos do JordÃ£o - Ultramaratona 49km": "Campos",
-        "WTR Campos do Jordão - Ultramaratona 49km": "Campos",
-        "WTR Serra do mar - Ultra": "Serra",
-        "Looooooong run": "Looooooong",
-        "Pedra da Gavea. Na chuva": "Pedra da Gavea",
-        "Run to the hills - Vista chinesa": "Vista chinesa",
-    }
-    return mapping.get(name, name)
-
+    return name if len(name) <= 60 else name[:57] + "..."
 
 def ratio_pct(current: float, best: float) -> float:
     if not best:
         return 0.0
     return round(100.0 * current / best, 1)
+
+
+def current_goal_label(season_goals: dict[str, Any]) -> str:
+    current_goal = season_goals.get("current_primary_goal")
+    if isinstance(current_goal, dict) and current_goal.get("status") == "active_goal":
+        return str(current_goal.get("name") or "objetivo atual")
+    return str(season_goals.get("main_goal") or "objetivo atual")
 
 
 def bar(svg: list[str], x: int, y: int, width: int, height: int, value: float, color: str) -> None:
@@ -70,18 +66,19 @@ def bar(svg: list[str], x: int, y: int, width: int, height: int, value: float, c
 
 
 def build_svg(panel: dict[str, Any]) -> str:
+    goal_label = panel["goal_context"]["label"]
     width = 1420
     height = 920
     svg: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         f'<rect width="{width}" height="{height}" fill="{BG}"/>',
         f'<text x="70" y="52" font-size="34" font-family="Georgia, serif" fill="{TEXT}" font-weight="700">Painel Atual de Performance</text>',
-        f'<text x="70" y="82" font-size="17" font-family="Verdana, sans-serif" fill="{SUBTEXT}">Provas, longoes e vertical em uma unica leitura para Arequipa.</text>',
+        f'<text x="70" y="82" font-size="17" font-family="Verdana, sans-serif" fill="{SUBTEXT}">Provas, longoes e vertical em uma unica leitura para {goal_label}.</text>',
     ]
 
-    snapshot = panel["arequipa_snapshot"]
+    snapshot = panel["current_goal_snapshot"]
     svg.append(f'<rect x="70" y="120" width="320" height="220" rx="18" fill="{CARD}" stroke="{BORDER}" stroke-width="2"/>')
-    svg.append(f'<text x="98" y="160" font-size="18" font-family="Verdana, sans-serif" fill="{SUBTEXT}">Snapshot Arequipa</text>')
+    svg.append(f'<text x="98" y="160" font-size="18" font-family="Verdana, sans-serif" fill="{SUBTEXT}">Snapshot objetivo atual</text>')
     svg.append(f'<text x="98" y="245" font-size="78" font-family="Verdana, sans-serif" fill="{ACCENT}" font-weight="700">{snapshot["score"]:.1f}</text>')
     svg.append(f'<text x="245" y="245" font-size="28" font-family="Verdana, sans-serif" fill="{SUBTEXT}">/100</text>')
     svg.append(f'<text x="98" y="285" font-size="22" font-family="Verdana, sans-serif" fill="{TEXT}" font-weight="700">{snapshot["band"]}</text>')
@@ -127,6 +124,8 @@ def build_svg(panel: dict[str, Any]) -> str:
 
 
 def main() -> None:
+    season_goals = load_json(SEASON_GOALS)
+    goal_label = current_goal_label(season_goals)
     race = load_json(RACE_INDEX)
     long = load_json(LONG_INDEX)
     vertical = load_json(VERT_INDEX)
@@ -188,19 +187,26 @@ def main() -> None:
         f"Seu estado atual de prova esta forte: {short_name(pillars['race']['name'])} entregou {pillars['race']['score']:.1f} e e o seu melhor benchmark trail recente.",
         f"Seu fundo recente tambem esta forte: {short_name(pillars['long']['name'])} chegou a {pillars['long']['score']:.1f}, muito perto do melhor longao recente.",
         f"O gargalo esta claro na vertical: {short_name(pillars['vertical']['name'])} esta em {pillars['vertical']['relative_to_best_pct']:.1f}% do seu melhor vertical recente.",
-        "Traduzindo para Arequipa: motor e endurance estao vivos, mas a especificidade de subida ainda esta atrasada em relacao ao seu proprio historico.",
+        f"Traduzindo para {goal_label}: motor e endurance estao vivos, mas a especificidade de trilha com D+ ainda precisa voltar ao seu melhor padrao.",
         "Se voce mantiver o fundo e elevar a vertical nas proximas semanas, o painel deve subir rapido sem precisar reinventar sua base aerobica.",
     ]
 
     dashboard = {
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "panel_name": "Current Performance Dashboard",
-        "purpose": "Juntar prova, longao e vertical em uma leitura unica do momento atual para Arequipa.",
+        "purpose": f"Juntar prova, longao e vertical em uma leitura unica do momento atual para {goal_label}.",
+        "goal_context": {
+            "label": goal_label,
+            "phase": season_goals.get("current_phase"),
+            "main_goal": season_goals.get("main_goal"),
+            "main_goal_status": season_goals.get("main_goal_status"),
+        },
         "pillars": pillars,
+        "current_goal_snapshot": snapshot,
         "arequipa_snapshot": snapshot,
         "messages": messages,
         "notes": {
-            "composite_score_note": "O Snapshot Arequipa e um resumo ponderado do painel. Ele nao substitui os indices individuais.",
+            "composite_score_note": "O snapshot do objetivo atual e um resumo ponderado do painel. Ele nao substitui os indices individuais.",
             "race_reference_note": "A referencia de prova usada no painel e a melhor trilha recente, nao a melhor prova curta de rua.",
         },
     }
@@ -210,7 +216,7 @@ def main() -> None:
         "",
         f"Gerado em: {dashboard['generated_at']}",
         "",
-        "## 1. Snapshot Arequipa",
+        f"## 1. Snapshot objetivo atual: {goal_label}",
         f"- Score composto atual: {snapshot['score']}/100",
         f"- Faixa: {snapshot['band']}",
         "- Peso do snapshot: 40% vertical, 35% prova trail, 25% longao.",
@@ -228,10 +234,10 @@ def main() -> None:
     md_lines.extend([
         "",
         "## 4. Leitura de treinador",
-        "- Se eu resumir em uma frase: voce esta pronto em motor e fundo, mas ainda abaixo do seu melhor padrao de subida especifica.",
+        f"- Se eu resumir em uma frase: voce esta com motor e fundo vivos para {goal_label}, mas ainda precisa reconstruir o melhor padrao de trilha com D+.",
         "- O WTR Rio mostrou prova forte e funcional no final.",
         "- Bravado mostrou longao recente forte.",
-        "- O mesmo Bravado, quando lido como sessao vertical, mostrou que a subida atual ainda esta longe do seu melhor bloco de 2025.",
+        "- O mesmo Bravado, quando lido como sessao vertical, mostrou que a subida atual ainda precisa voltar ao melhor bloco de 2025.",
         "",
         "## 5. Arquivos-base",
         f"- Provas: {RACE_INDEX.name}",
