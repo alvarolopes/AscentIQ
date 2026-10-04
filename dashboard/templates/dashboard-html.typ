@@ -30,7 +30,7 @@
       #el("section", class: "hero")[
         #el("span", class: "kicker")[DASHBOARD HTML GERADO PELO TYPST]
         #el("h1")[Resumo de treinos]
-        #el("p")[#data.athlete.name · Dados de treinos até #data.freshness.activities]
+        #el("p")[#val(data.athlete.name) · Dados de treinos até #val(data.freshness.activities)]
       ]
       #if data.at("sync_warnings", default: ()).len() > 0 {
         el("aside", class: "notice", data.sync_warnings.join(" "))
@@ -43,20 +43,34 @@
       ]
       #el("section", class: "panel")[
         #el("h2")[Carga e adaptação / últimos 90 dias]
-        #html.elem("img", attrs: (src: "chart", alt: "Fitness, Fadiga e Forma ao longo dos últimos 90 dias", class: "chart"))
+        #if data.performance.series.len() > 0 {
+          html.elem("img", attrs: (src: "chart", alt: "Fitness, Fadiga e Forma ao longo dos últimos 90 dias", class: "chart"))
+        } else {
+          el("p", class: "notice")[Sem série de carga disponível. Registre ou importe atividades para construir o histórico.]
+        }
         #for insight in data.insights { el("p", class: "muted small", insight) }
       ]
       #el("section", class: "panel")[
         #el("h2")[Últimos 7 dias]
         #el("p", class: "muted")[#data.week.start a #data.week.end]
-        #table(("Corrida / km", "D+ corrida / m", "Sessões de força", "Séries de trabalho"), ((data.week.running_km, data.week.running_elevation_m, data.week.strength_sessions, data.week.working_sets),))
+        #if data.week.activity_count == 0 and data.week.strength_sessions == 0 {
+          el("p", class: "notice")[Sem atividades registradas nesta janela. Ausência de registro não comprova descanso.]
+        } else {
+          table(("Corrida / km", "D+ corrida / m", "Sessões de força", "Séries de trabalho"), ((data.week.running_km, data.week.running_elevation_m, data.week.strength_sessions, data.week.working_sets),))
+        }
       ]
       #el("section", class: "panel")[
         #el("h2")[Corridas recentes]
+        #if data.activities.filter(x => x.kind == "running").len() == 0 {
+          el("p", class: "muted")[Sem corridas registradas.]
+        }
         #table(("Data", "Atividade", "Distância / km", "Tempo", "FC média"), take(data.activities.filter(x => x.kind == "running"), 20).map(x => (x.date, x.name, x.distance_km, x.elapsed_time, x.avg_hr)))
       ]
       #el("section", class: "panel")[
         #el("h2")[Diário de força]
+        #if data.strength.len() == 0 {
+          el("p", class: "muted")[Sem sessões de força registradas.]
+        }
         #for workout in take(data.strength, 15) {
           html.elem("details")[
             #html.elem("summary")[#workout.date · #workout.title · #val(workout.working_sets) séries · #val(workout.volume_kg) kg·rep]

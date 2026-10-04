@@ -44,7 +44,19 @@ def score_band(score: float) -> str:
 
 
 def short_name(name: str) -> str:
-    return name if len(name) <= 60 else name[:57] + "..."
+    mapping = {
+        "WTR Floresta da Tijuca": "WTR Rio",
+        "27Â° Meia Maratona Internacional do Rio de Janeiro": "27 Meia",
+        "27° Meia Maratona Internacional do Rio de Janeiro": "27 Meia",
+        "WTR Campos do JordÃ£o - Ultramaratona 49km": "Campos",
+        "WTR Campos do Jordão - Ultramaratona 49km": "Campos",
+        "WTR Serra do mar - Ultra": "Serra",
+        "Looooooong run": "Looooooong",
+        "Pedra da Gavea. Na chuva": "Pedra da Gavea",
+        "Run to the hills - Vista chinesa": "Vista chinesa",
+    }
+    return mapping.get(name, name)
+
 
 def ratio_pct(current: float, best: float) -> float:
     if not best:

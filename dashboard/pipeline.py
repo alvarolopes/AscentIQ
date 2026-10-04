@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -28,13 +28,33 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", 
     from scripts.compute_garmin_sync_window import sync_start
 
     load_dotenv(root / ".env")
-    required = (["GARMIN_EMAIL", "GARMIN_PASSWORD"] if "garmin" in sources else []) + (["HEVY_API_KEY"] if "hevy" in sources else [])
-    missing = [key for key in required if not os.environ.get(key)]
-    if missing:
-        raise RuntimeError("Preencha as chaves locais: " + ", ".join(missing))
+    keys = {"garmin": ("GARMIN_EMAIL", "GARMIN_PASSWORD"), "hevy": ("HEVY_API_KEY",)}
+    warnings = []
+    available = []
+    for source in sources:
+        if os.environ.get('ASCENTIQ_' + source.upper() + '_ENABLED', 'true') != 'true':
+            warnings.append(f"Integração {source} desconectada; histórico preservado.")
+        elif any(not os.environ.get(key) for key in keys[source]):
+            warnings.append(f"Integração {source} sem credenciais; configure em Dados / Integrações.")
+        else:
+            available.append(source)
+    if not available:
+        raise RuntimeError("Nenhuma fonte disponível. Configure as integrações antes de sincronizar.")
+    sources = tuple(available)
     today = datetime.now(TZ).date()
-    history = json.loads((root / "data" / "training_history.json").read_text(encoding="utf-8-sig"))
+    history_path = root / 'data' / 'training_history.json'
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    if not history_path.exists():
+        history_path.write_text('[]', encoding='utf-8')
+    history = json.loads(history_path.read_text(encoding="utf-8-sig"))
     start = sync_start(history, today, date.fromisoformat(os.environ.get("TRAINING_SYNC_START_DATE", "2024-01-01")), 7)
+    # Catch up sleep independently of activity dates after a missed collection.
+    from scripts.sleep_data import sleep_rows
+    sleep_path = root / "data" / "garmin_sleep_reference_2026_04.json"
+    if sleep_path.exists():
+        rows = sleep_rows(json.loads(sleep_path.read_text(encoding="utf-8-sig")), today.isoformat())
+        if rows:
+            start = min(start, date.fromisoformat(rows[-1]['date']) - timedelta(days=7))
     stamp = datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
     output = root / "data" / "garmin_mcp_exports" / f"garmin_mcp_incremental_{stamp}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -45,7 +65,6 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", 
             "--daily-tool", "get_daily_summary", "--max-detail-activities", os.environ.get("TRAINING_SYNC_MAX_DETAIL_ACTIVITIES", "300")]
     for tool in ("get_activity", "get_activity_details", "get_activity_splits", "get_activity_hr_zones", "get_activity_exercise_sets"):
         args += ["--activity-detail-tool", tool]
-    warnings = []
     for source in sources:
         original_datasets = {p:p.read_bytes() for p in (root / "data").glob("*.json")}
         original_history = (root / "data" / "training_history.json").read_bytes()
@@ -59,6 +78,9 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", 
                 payload = json.loads(output.read_text(encoding="utf-8-sig"))
                 if '"error"' in json.dumps({key: payload.get(key) for key in ("sleep", "daily_metrics", "activity_details")}):
                     warnings.append("Garmin retornou dados complementares parciais; confira a atualidade de cada fonte.")
+                stored_sleep = json.loads(sleep_path.read_text(encoding="utf-8-sig")) if sleep_path.exists() else {}
+                if not any(row.get('date') == today.isoformat() and row.get('duration_minutes') is not None for row in stored_sleep.get('daily', [])):
+                    warnings.append("Sono de hoje ainda sem duração disponível no Garmin. O histórico anterior foi preservado; sincronize o relógio.")
             else:
                 output_hevy = root / "data" / "hevy_api_exports" / "hevy_workouts_latest.json"
                 run_script("fetch_hevy_workouts.py", "--output", str(output_hevy), "--incremental", "--no-archive", root=root, progress=progress)
@@ -76,6 +98,23 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", 
 
 
 def rebuild(root: Path = ROOT, progress=lambda _: None) -> None:
+    # First use has no observation from which to derive training load. The
+    # legacy scripts intentionally reject empty input; publish missing metrics
+    # rather than failing the entire report or using portfolio examples.
+    data = root / 'data'
+    activities = []
+    for name in ('training_history', 'race_history'):
+        path = data / (name + '.json')
+        if path.exists():
+            activities.extend(json.loads(path.read_text(encoding='utf-8-sig')))
+    if not any(isinstance(row, dict) and row.get('date') for row in activities):
+        data.mkdir(parents=True, exist_ok=True)
+        (data / 'performance_management_model.json').write_text(json.dumps({
+            'summary': {}, 'daily_series': [],
+            'model_notes': ['Sem atividades datadas para estimar a carga. Ausência não significa descanso.']},
+            ensure_ascii=False), encoding='utf-8')
+        progress('Sem atividades datadas; métricas de carga permanecem desconhecidas')
+        return
     for name in ("build_performance_management_model.py", "build_last_3_weeks_pmc_chart.py",
                  "build_training_execution_indexes.py", "build_current_performance_dashboard.py", "build_training_sync_summary.py"):
         run_script(name, root=root, progress=progress)

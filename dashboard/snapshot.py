@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 from dashboard.repository import dataset_bytes, read_dataset, repository_context, revision_metadata
+from scripts.sleep_data import sleep_rows, summarize_sleep
+from scripts.build_performance_management_model import build_recovery_summary
 
 ROOT = Path(__file__).resolve().parents[1]
 TZ = ZoneInfo("America/Sao_Paulo")
@@ -171,7 +173,11 @@ def _build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
                         "trends": row.get("historical_trends_from_report", {})})
     profile = load(root, "athlete_profile", {})
     goals = load(root, "season_goals", {})
-    summary = model.get("summary", {})
+    summary = dict(model.get("summary", {}))
+    sleep = load(root, "garmin_sleep_reference_2026_04", {})
+    sleep_daily = sleep_rows(sleep, today.isoformat())
+    if sleep:
+        summary['recovery'] = build_recovery_summary(sleep, today.isoformat())
     start = (today - timedelta(days=6)).isoformat()
     recent = [x for x in activities if start <= (x.get("date") or "") <= today.isoformat()]
     recent_strength = [x for x in strengths if start <= (x.get("date") or "") <= today.isoformat()]
@@ -187,18 +193,19 @@ def _build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
     if body.get("reference_date"):
         insights.append(f"Composição corporal é a avaliação de {body['reference_date']}; não é uma estimativa do corpo de hoje.")
     digest = hashlib.sha256()
-    for name in ("training_history", "hevy_workouts", "strength_training_consolidated", "body_metrics", "medical_history", "performance_management_model"):
+    for name in ("training_history", "hevy_workouts", "strength_training_consolidated", "body_metrics", "medical_history", "performance_management_model", "garmin_sleep_reference_2026_04"):
         raw = dataset_bytes(root, f"data/{name}.json")
         if raw is not None:
             digest.update(raw)
     race_index = read_dataset(root, "analysis/races/last_10_race_performance_index.json", {})
     return {"schema_version": 1, "model_version": "athlete-load-42-7/v1", "generated_at": datetime.now(TZ).isoformat(timespec="seconds"),
             "as_of": today.isoformat(), "source_digest": digest.hexdigest(), "freshness": freshness,
-            "athlete": {"name": profile.get("name") or "Atleta", "age": profile.get("age"), "current_goal": profile.get("current_goal"),
+            "athlete": {"name": profile.get("name"), "age": profile.get("age"), "current_goal": profile.get("current_goal"),
                         "endurance_goal": profile.get("current_endurance_goal")},
             "goals": {"health": goals.get("current_health_goal"), "endurance": goals.get("current_primary_goal")},
             "performance": {"summary": summary, "series": series, "notes": model.get("model_notes", [])},
             "activities": activities, "strength": strengths, "race_index": race_index,
+            "sleep": {"daily": sleep_daily, "summary": summarize_sleep(sleep, today.isoformat())},
             "week": {"start": start, "end": today.isoformat(), "activity_count": len(recent),
                      "running_km": round(sum(x.get("distance_km") or 0 for x in recent if x["kind"] == "running"), 2),
                      "running_elevation_m": round(sum(x.get("elevation_gain_m") or 0 for x in recent if x["kind"] == "running")),

@@ -7,6 +7,7 @@ import os
 import secrets
 import sqlite3
 import time
+from datetime import date
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -16,8 +17,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from dashboard.jobs import JobManager
+from dashboard.daily_analysis import DailyReports, configuration, prepare
 from dashboard.snapshot import ROOT, build_snapshot, medical_documents
 from dashboard.repository import connect, operational_db, postgres_enabled
+from dashboard.nutrition import FoodDiary, estimate, validate, prompt
+from datetime import datetime, timezone
+import uuid
 
 RUNTIME = Path(os.environ.get("DASHBOARD_RUNTIME", str(ROOT / "runtime" / "dashboard")))
 COOKIE = "ascentiq_session"
@@ -32,13 +37,39 @@ class JobRequest(BaseModel):
     mode: str
 
 
+class AnalysisRequest(BaseModel):
+    fingerprint: str = Field(min_length=64, max_length=64)
+    text: str | None = Field(default=None, min_length=20, max_length=30000)
+
+class FoodRequest(BaseModel):
+    text: str = Field(min_length=3, max_length=10000)
+    meal: str = Field(default='Refeição', min_length=1, max_length=80)
+    analysis: dict | None = None
+    id: uuid.UUID | None = None
+    revision: int | None = Field(default=None, ge=0)
+    image: str | None = Field(default=None, max_length=9000000)
+
+class FoodRemove(BaseModel):
+    id: uuid.UUID
+    revision: int | None = Field(default=None, ge=0)
+
+class FoodCoverage(BaseModel):
+    completeness: str
+    fasting_declared: bool = False
+    revision: int | None = Field(default=None, ge=0)
+
+class FoodRestore(BaseModel):
+    restore_revision: int = Field(ge=0)
+    revision: int | None = Field(default=None, ge=0)
+
+
 def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     runtime.mkdir(parents=True, exist_ok=True)
     auth_path = runtime / "auth.json"
     if not auth_path.exists():
         password = os.environ.get("DASHBOARD_PASSWORD") or secrets.token_urlsafe(18)
         salt = secrets.token_hex(16)
-        auth = {"username": os.environ.get("DASHBOARD_USERNAME", "athlete"), "salt": salt,
+        auth = {"username": os.environ.get("DASHBOARD_USERNAME", "alvaro"), "salt": salt,
                 "hash": hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 310000).hex()}
         auth_path.write_text(json.dumps(auth), encoding="utf-8")
         if not os.environ.get("DASHBOARD_PASSWORD"):
@@ -59,6 +90,8 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     with sessions() as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS sessions (digest TEXT PRIMARY KEY, expires REAL)")
     manager = JobManager(runtime, root)
+    daily_reports = DailyReports(runtime)
+    food_diary = FoodDiary(runtime, root)
     attempts: dict[str, list[float]] = {}
 
     @asynccontextmanager
@@ -131,20 +164,100 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
         key = json.loads(path.read_text())["id"]
         return runtime / "reports" / key
 
+    def live_snapshot():
+        return app.state.personal_snapshot() if hasattr(app.state, 'personal_snapshot') else build_snapshot(root)
+
     @app.get("/api/dashboard")
     def dashboard():
-        if postgres_enabled(root):
-            return build_snapshot(root)
-        path = latest_path()
-        if path:
-            return json.loads((path / "snapshot.json").read_text(encoding="utf-8"))
-        snapshot = build_snapshot(root)
-        snapshot["report_pending"] = True
+        snapshot = live_snapshot()
+        snapshot["report_pending"] = latest_path() is None
         return snapshot
+
+    @app.get("/api/daily-analysis/{day}")
+    def daily_analysis(day: date):
+        prepared = prepare(live_snapshot(), day)
+        saved = daily_reports.read(day)
+        return {**prepared, **configuration(), "report": saved,
+                "stale": bool(saved and saved["fingerprint"] != prepared["fingerprint"])}
+
+    @app.post("/api/daily-analysis/{day}")
+    def generate_daily_analysis(day: date, payload: AnalysisRequest):
+        prepared = prepare(live_snapshot(), day)
+        if payload.fingerprint != prepared["fingerprint"]:
+            raise HTTPException(409, "Os treinos mudaram. Consulte o dia novamente antes de gerar ou importar.")
+        if payload.text is not None and len(payload.text.strip()) < 20:
+            raise HTTPException(400, "Cole o relatório completo antes de salvar.")
+        try:
+            return daily_reports.save(prepared, payload.text.strip() if payload.text is not None else None)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(503, str(error)) from error
+
+    @app.get('/api/food/{day}')
+    def food(day: date):
+        return {**food_diary.read(day), **configuration()}
+
+    @app.post('/api/food/{day}/analyze')
+    def analyze_food(day: date, payload: FoodRequest):
+        if not payload.text.strip():
+            raise HTTPException(400, 'Descreva sua refeição.')
+        try:
+            if payload.analysis is not None:
+                return {**validate(payload.analysis), 'source': 'imported', 'model': 'Resposta importada'}
+            return estimate(payload.text, payload.image)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(503, str(error)) from error
+
+    @app.post('/api/food/{day}/prompt')
+    def food_prompt(day: date, payload: FoodRequest):
+        return {'prompt': prompt(payload.text)}
+
+    @app.post('/api/food/{day}/save')
+    def save_food(day: date, payload: FoodRequest):
+        try:
+            analysis = validate(payload.analysis, allow_unknown=True) if payload.analysis is not None else None
+            image_id = None
+            if payload.image:
+                image_id = app.state.food_image(payload.image)
+            elif payload.id:
+                previous = next((x for x in food_diary.read(day)['entries'] if x['id'] == str(payload.id)), None)
+                image_id = previous.get('image_id') if previous else None
+            return food_diary.change(day, entry={'id': str(payload.id or uuid.uuid4()),
+                'meal': payload.meal, 'text': payload.text, 'analysis': analysis,
+                'image_id': image_id, 'created_at': datetime.now(timezone.utc).isoformat(), 'source': 'reviewed' if analysis else 'pending'},
+                expected_revision=payload.revision)
+        except ValueError as error:
+            raise HTTPException(409 if 'mudou' in str(error) else 400, str(error)) from error
+
+    @app.post('/api/food/{day}/remove')
+    def remove_food(day: date, payload: FoodRemove):
+        try:
+            return food_diary.change(day, remove=str(payload.id), expected_revision=payload.revision)
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
+
+    @app.post('/api/food/{day}/coverage')
+    def food_coverage(day: date, payload: FoodCoverage):
+        try:
+            return food_diary.change(day, completeness=payload.completeness,
+                fasting_declared=payload.fasting_declared, expected_revision=payload.revision)
+        except ValueError as error:
+            raise HTTPException(409 if 'mudou' in str(error) else 400, str(error)) from error
+
+    @app.post('/api/food/{day}/restore')
+    def restore_food(day: date, payload: FoodRestore):
+        try:
+            return food_diary.change(day, restore_revision=payload.restore_revision, expected_revision=payload.revision)
+        except ValueError as error:
+            raise HTTPException(409 if 'mudou' in str(error) else 400, str(error)) from error
 
     @app.get("/api/jobs")
     def jobs():
-        return {"jobs": manager.list(), "schedule": "Segunda-feira, 07:00 (America/Sao_Paulo)",
+        return {"jobs": manager.list(), "schedule": "Relatório semanal: segunda, 07h. Garmin e sono: diariamente, 10h (America/Sao_Paulo); até 3 tentativas com intervalo de 1h.",
+                "sleep_schedule_enabled": os.environ.get("DASHBOARD_SLEEP_SCHEDULE_ENABLED", "true").lower() == "true",
                 "schedule_enabled": os.environ.get("DASHBOARD_SCHEDULE_ENABLED", "true").lower() == "true"}
 
     @app.post("/api/jobs", status_code=202)
@@ -214,4 +327,6 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
             raise HTTPException(404)
         return FileResponse(path, filename=path.name)
 
+    from dashboard.personal_api import install_personal_routes
+    install_personal_routes(app, runtime, root, food_diary, manager)
     return app

@@ -2,18 +2,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from common import format_duration, format_pace, safe_float, save_json
+try:
+    from .common import format_duration, format_pace, safe_float, save_json
+    from .sleep_data import summarize_sleep
+except ImportError:
+    from common import format_duration, format_pace, safe_float, save_json
+    from sleep_data import summarize_sleep
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = ROOT / "data" / "garmin_mcp_exports"
 TRAINING_HISTORY_PATH = ROOT / "data" / "training_history.json"
 SLEEP_PATH = ROOT / "data" / "garmin_sleep_reference_2026_04.json"
+ENERGY_PATH = ROOT / "data" / "daily_energy.json"
 REPORT_PATH = ROOT / "analysis" / "context" / "garmin_mcp_import_update.md"
 
 
@@ -57,6 +64,7 @@ def parse_args() -> argparse.Namespace:
         help="Sleep reference JSON path.",
     )
     parser.add_argument("--since", help="Only import activities on or after YYYY-MM-DD.")
+    parser.add_argument("--energy-output", default=str(ENERGY_PATH), help="Normalized daily energy JSON path.")
     parser.add_argument("--dry-run", action="store_true", help="Parse without writing files.")
     return parser.parse_args()
 
@@ -100,6 +108,19 @@ def walk_dicts(payload: Any) -> list[dict[str, Any]]:
             except json.JSONDecodeError:
                 pass
     return found
+
+
+def ordered_payloads(payloads: list[Any]) -> list[Any]:
+    """Filename order is not observation order (full versus incremental exports)."""
+    def order(indexed):
+        index, payload = indexed
+        stamp = payload.get("generated_at") if isinstance(payload, dict) else None
+        try:
+            parsed = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+            return (1, parsed.replace(tzinfo=timezone.utc).timestamp() if parsed.tzinfo is None else parsed.timestamp(), index)
+        except (ValueError, OverflowError):
+            return (0, 0, index)
+    return [payload for _, payload in sorted(enumerate(payloads), key=order)]
 
 
 def key_lookup(row: dict[str, Any], *keys: str) -> tuple[str | None, Any]:
@@ -239,6 +260,7 @@ def normalize_activity(row: dict[str, Any]) -> dict[str, Any] | None:
     _, avg_hr = key_lookup(row, "averageHR", "averageHeartRate", "avgHr", "avg_hr")
     _, max_hr = key_lookup(row, "maxHR", "maxHeartRate", "maxHr", "max_hr")
     _, ascent = key_lookup(row, "elevationGain", "elevationGainMeters", "ascent", "totalAscent")
+    _, calories = key_lookup(row, "calories", "totalCalories", "caloriesBurned")
 
     pace_seconds = moving_seconds / dist if moving_seconds and dist else None
     item = {
@@ -249,7 +271,7 @@ def normalize_activity(row: dict[str, Any]) -> dict[str, Any] | None:
         "name": str(name or t),
         "type": t,
         "subtype": subtype,
-        "distance_km": round(dist, 2) if dist is not None else 0.0,
+        "distance_km": round(dist, 2) if dist is not None else None,
         "elapsed_time": format_duration(elapsed_seconds),
         "moving_time": format_duration(moving_seconds),
         "duration_seconds": elapsed_seconds,
@@ -257,7 +279,9 @@ def normalize_activity(row: dict[str, Any]) -> dict[str, Any] | None:
         "stopped_time_seconds": elapsed_seconds - moving_seconds if elapsed_seconds and moving_seconds is not None else None,
         "avg_hr": int(round(safe_float(avg_hr))) if safe_float(avg_hr) is not None else None,
         "max_hr": int(round(safe_float(max_hr))) if safe_float(max_hr) is not None else None,
-        "watch_elevation_gain_m": round(safe_float(ascent) or 0.0, 1),
+        "watch_elevation_gain_m": round(safe_float(ascent), 1) if safe_float(ascent) is not None else None,
+        "calories": energy_number(calories),
+        "activity_calories_kind": "source_unspecified" if energy_number(calories) is not None else None,
         "pace_avg": format_pace(pace_seconds),
         "pace_seconds_per_km": round(pace_seconds, 2) if pace_seconds else None,
         "source": "garmin_mcp_snapshot",
@@ -268,9 +292,8 @@ def normalize_activity(row: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def extract_activities(payloads: list[Any]) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for payload in payloads:
+    by_id: dict[str, dict[str, Any]] = {}
+    for payload in ordered_payloads(payloads):
         for row in walk_dicts(payload):
             if not looks_like_activity(row):
                 continue
@@ -278,11 +301,144 @@ def extract_activities(payloads: list[Any]) -> list[dict[str, Any]]:
             if not activity:
                 continue
             key = activity.get("garmin_activity_id") or activity["activity_key"]
-            if key in seen:
-                continue
-            seen.add(key)
-            items.append(activity)
-    return sorted(items, key=lambda item: item.get("date_time") or "")
+            by_id[key] = merge_duplicate_activity(by_id[key], activity) if key in by_id else activity
+    return sorted(by_id.values(), key=lambda item: item.get("date_time") or "")
+
+
+def energy_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number >= 0 else None
+
+
+def normalize_daily_energy(row: dict[str, Any], fallback_date=None, observed_at=None) -> dict[str, Any] | None:
+    """Keep Garmin daily components separate; activity calories are not inputs."""
+    _, raw_day = key_lookup(row, "calendarDate", "calendar_date", "date")
+    try:
+        day = datetime.fromisoformat(str(raw_day or fallback_date)[:10]).date().isoformat()
+    except ValueError:
+        return None
+    aliases = {
+        "total_kcal": ("totalKilocalories", "totalCalories", "total_kcal", "total_calories"),
+        "active_kcal": ("activeKilocalories", "activeCalories", "active_kcal", "active_calories"),
+        "resting_kcal": ("bmrKilocalories", "restingKilocalories", "restingCalories", "resting_kcal", "bmrCalories"),
+    }
+    values, raw_fields = {}, {}
+    for field, keys in aliases.items():
+        key, value = key_lookup(row, *keys)
+        parsed = energy_number(value)
+        if parsed is not None:
+            values[field] = parsed
+            raw_fields[key] = value
+    if not values:
+        return None
+    _, raw_coverage = key_lookup(row, "coverage", "coverageStatus", "dataCoverage")
+    coverage = {"full": "complete", "complete": "complete", "partial": "partial", "unknown": "unknown"}.get(str(raw_coverage).lower(), "unknown")
+    _, complete = key_lookup(row, "isComplete", "dayComplete", "dataComplete", "isFinal")
+    if complete is True:
+        coverage = "complete"
+    elif complete is False:
+        coverage = "partial"
+    item = {"date": day, "source": "garmin", "source_id": f"garmin:daily:{day}",
+            "method": "wearable_total" if "total_kcal" in values else "wearable_components",
+            "method_version": "garmin-daily-summary/v1", "coverage": coverage,
+            "total_includes_active": True, "total_includes_exercise": True,
+            "components_non_overlapping": False, "raw_fields": raw_fields, **values}
+    _, timestamp = key_lookup(row, "observed_at", "lastUpdatedTimestamp", "lastSyncTimestamp")
+    if timestamp or observed_at:
+        item["observed_at"] = str(timestamp or observed_at)
+        item["field_observed_at"] = {field: item["observed_at"] for field in values}
+    for field, keys in (("coverage_hours", ("coverage_hours", "coverageHours")),
+                        ("interval_start", ("interval_start", "intervalStart")),
+                        ("interval_end", ("interval_end", "intervalEnd")),
+                        ("is_projection", ("is_projection", "isProjection"))):
+        _, value = key_lookup(row, *keys)
+        if field == "coverage_hours":
+            value = energy_number(value)
+        if value is not None and value != "":
+            item[field] = value
+    return item
+
+
+def extract_daily_energy(payloads: list[Any]) -> list[dict[str, Any]]:
+    by_day: dict[str, dict[str, Any]] = {}
+
+    metadata_fields = {"coverage", "coverageStatus", "dataCoverage", "isComplete", "dayComplete", "dataComplete", "isFinal",
+                       "coverage_hours", "coverageHours", "interval_start", "intervalStart", "interval_end", "intervalEnd",
+                       "is_projection", "isProjection", "observed_at", "lastUpdatedTimestamp", "lastSyncTimestamp"}
+
+    def visit(node, inherited_date=None, observed_at=None, inherited_metadata=None):
+        if isinstance(node, str):
+            try:
+                node = json.loads(node)
+            except json.JSONDecodeError:
+                return
+        if isinstance(node, list):
+            for child in node:
+                visit(child, inherited_date, observed_at, inherited_metadata)
+        elif isinstance(node, dict):
+            if node.get("error"):
+                return
+            if looks_like_activity(node) or any(key in node for key in ("activityId", "activity_id")):
+                return
+            day = node.get("calendarDate") or node.get("date") or inherited_date
+            metadata = {**(inherited_metadata or {}), **{k: v for k, v in node.items() if k in metadata_fields and v is not None}}
+            item = normalize_daily_energy({**metadata, **node}, day, observed_at)
+            if item:
+                previous = by_day.get(item["date"], {})
+                by_day[item["date"]] = {**previous, **item,
+                                       "raw_fields": {**previous.get("raw_fields", {}), **item["raw_fields"]},
+                                       "field_observed_at": {**previous.get("field_observed_at", {}), **item.get("field_observed_at", {})}}
+            for key, child in node.items():
+                if str(key).lower() in {"activities", "activity", "activity_details", "workouts", "sessions", "exercises"}:
+                    continue
+                if isinstance(child, (dict, list, str)):
+                    visit(child, day, observed_at, metadata)
+
+    for payload in ordered_payloads(payloads):
+        if not isinstance(payload, dict):
+            continue
+        stamp = payload.get("generated_at")
+        metrics = payload.get("daily_metrics", {})
+        if isinstance(metrics, dict):
+            for key in ("get_daily_summary", "daily_summary"):
+                if key in metrics:
+                    visit(metrics[key], observed_at=stamp)
+        for key in ("daily_summary", "daily_summaries", "daily_energy"):
+            if key in payload:
+                visit(payload[key], observed_at=stamp)
+        if payload.get("calendarDate"):
+            visit(payload, observed_at=stamp)
+    return [by_day[day] for day in sorted(by_day)]
+
+
+def merge_daily_energy(existing_path: Path, new_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    existing = load_json(existing_path) if existing_path.exists() else {}
+    rows = existing if isinstance(existing, list) else existing.get("daily", [])
+    by_day = {row["date"]: dict(row) for row in rows if isinstance(row, dict) and row.get("date")}
+    significant = ("total_kcal", "active_kcal", "resting_kcal", "coverage", "is_projection", "interval_start", "interval_end")
+    for incoming in new_rows:
+        previous = by_day.get(incoming["date"], {})
+        clean = {k: v for k, v in incoming.items() if v is not None and v != ""}
+        # A partial component update cannot redefine the coverage of an older total.
+        if previous.get("total_kcal") is not None and "total_kcal" not in clean:
+            clean.pop("coverage", None)
+            clean.pop("method", None)
+        merged = {**previous, **clean,
+                  "raw_fields": {**previous.get("raw_fields", {}), **clean.get("raw_fields", {})},
+                  "field_observed_at": {**previous.get("field_observed_at", {}), **clean.get("field_observed_at", {})}}
+        history = list(previous.get("revisions", []))
+        changed = previous and any(previous.get(key) != merged.get(key) for key in significant)
+        if changed:
+            history.append({k: v for k, v in previous.items() if k != "revisions"})
+        merged["record_revision"] = previous.get("record_revision", 1) + bool(changed)
+        merged["revisions"] = history
+        by_day[incoming["date"]] = merged
+    return {"schema_version": 1, "daily": [by_day[day] for day in sorted(by_day)]}
 
 
 def sleep_score(row: dict[str, Any]) -> int | None:
@@ -293,7 +449,10 @@ def sleep_score(row: dict[str, Any]) -> int | None:
     _, nested = key_lookup(row, "sleepScores")
     if isinstance(nested, dict):
         for key in ("overall", "overallScore", "total", "score"):
-            parsed = safe_float(nested.get(key))
+            value = nested.get(key)
+            if isinstance(value, dict):
+                value = value.get("value") or value.get("score")
+            parsed = safe_float(value)
             if parsed is not None:
                 return int(round(parsed))
     return None
@@ -309,6 +468,11 @@ def normalize_sleep(row: dict[str, Any]) -> dict[str, Any] | None:
         return None
     score = sleep_score(row)
     _, quality = key_lookup(row, "quality", "sleepQuality")
+    _, sleep_scores = key_lookup(row, "sleepScores")
+    if not quality and isinstance(sleep_scores, dict):
+        overall = sleep_scores.get("overall")
+        if isinstance(overall, dict):
+            quality = overall.get("qualifierKey")
     _, duration = key_lookup(row, "sleepTimeSeconds", "sleepDurationSeconds", "durationSeconds", "duration_minutes")
     duration_seconds = seconds_from_any(duration)
     if duration_seconds and str(duration).isdigit() and int(duration) < 1440:
@@ -317,9 +481,10 @@ def normalize_sleep(row: dict[str, Any]) -> dict[str, Any] | None:
     _, bed = key_lookup(row, "sleepStartTimestampLocal", "bedTime", "sleepStart")
     _, wake = key_lookup(row, "sleepEndTimestampLocal", "wakeTime", "sleepEnd")
     _, resting_hr = key_lookup(row, "restingHeartRate", "resting_hr", "restingHR")
-    _, body_battery = key_lookup(row, "bodyBattery", "body_battery")
-    _, respiration = key_lookup(row, "respiration", "averageRespiration")
+    _, body_battery = key_lookup(row, "bodyBatteryChange", "bodyBattery", "body_battery")
+    _, respiration = key_lookup(row, "averageRespirationValue", "respiration", "averageRespiration")
     _, hrv = key_lookup(row, "hrvStatus", "hrv_status", "hrv")
+    _, hrv_ms = key_lookup(row, "avgOvernightHrv", "averageOvernightHrv", "hrv_ms")
     hours, minutes = divmod(duration_minutes or 0, 60)
     return {
         "date": str(date_value)[:10],
@@ -332,6 +497,7 @@ def normalize_sleep(row: dict[str, Any]) -> dict[str, Any] | None:
         "body_battery": int(round(safe_float(body_battery))) if safe_float(body_battery) is not None else None,
         "respiration": safe_float(respiration),
         "hrv_status": str(hrv) if hrv is not None else None,
+        "hrv_ms": safe_float(hrv_ms),
         "duration_minutes": duration_minutes,
     }
 
@@ -343,13 +509,24 @@ def looks_like_sleep(row: dict[str, Any]) -> bool:
 
 def extract_sleep(payloads: list[Any]) -> list[dict[str, Any]]:
     by_date: dict[str, dict[str, Any]] = {}
-    for payload in payloads:
+    def retain(item: dict[str, Any] | None) -> None:
+        if not item:
+            return
+        previous = by_date.get(item["date"], {})
+        by_date[item["date"]] = {**previous, **{key: value for key, value in item.items() if value is not None and value != ""}}
+    for payload in ordered_payloads(payloads):
         for row in walk_dicts(payload):
+            # Garmin places date/duration/score in dailySleepDTO and recovery
+            # metrics beside it. Normalize the combined record first.
+            wrapped = row.get("payload")
+            if isinstance(wrapped, dict) and isinstance(wrapped.get("dailySleepDTO"), dict):
+                dto = wrapped["dailySleepDTO"]
+                combined = {**dto, **{key: value for key, value in wrapped.items() if not isinstance(value, (dict, list))}}
+                combined.setdefault("date", row.get("date"))
+                retain(normalize_sleep(combined))
             if not looks_like_sleep(row):
                 continue
-            item = normalize_sleep(row)
-            if item:
-                by_date[item["date"]] = item
+            retain(normalize_sleep(row))
     return [by_date[day] for day in sorted(by_date)]
 
 
@@ -408,15 +585,17 @@ def similar_history_key(item: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def merge_duplicate_activity(current: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    # Reobserving a stable Garmin ID is a correction, not a quality competition.
+    same_id = current.get("garmin_activity_id") is not None and str(current.get("garmin_activity_id")) == str(candidate.get("garmin_activity_id"))
     primary, secondary = (
         (candidate, current)
-        if history_quality_score(candidate) >= history_quality_score(current)
+        if same_id or history_quality_score(candidate) >= history_quality_score(current)
         else (current, candidate)
     )
     merged = dict(secondary)
     merged.update({key: value for key, value in primary.items() if value is not None and value != ""})
 
-    best_name_item = candidate if human_name_score(candidate) > human_name_score(current) else current
+    best_name_item = candidate if same_id or human_name_score(candidate) > human_name_score(current) else current
     if best_name_item.get("name"):
         merged["name"] = best_name_item["name"]
 
@@ -429,6 +608,8 @@ def merge_duplicate_activity(current: dict[str, Any], candidate: dict[str, Any])
     if sources:
         merged["source"] = "+".join(sources)
 
+    merged["classification_hint"] = classify_activity(merged)
+
     return merged
 
 
@@ -440,6 +621,11 @@ def dedupe_similar_history(history: list[dict[str, Any]]) -> list[dict[str, Any]
         exact_key = history_key(item)
         similar_key = similar_history_key(item)
         target_key = exact_key if exact_key in exact else similar_index.get(similar_key, exact_key)
+        if target_key in exact:
+            previous_id = exact[target_key].get("garmin_activity_id")
+            new_id = item.get("garmin_activity_id")
+            if previous_id is not None and new_id is not None and str(previous_id) != str(new_id):
+                target_key = exact_key
         if target_key not in exact:
             exact[target_key] = dict(item)
             similar_index[similar_key] = target_key
@@ -483,7 +669,9 @@ def merge_sleep(existing_path: Path, new_sleep: list[dict[str, Any]]) -> dict[st
     existing = load_json(existing_path) if existing_path.exists() else {"daily": [], "weekly": []}
     by_date = {item.get("date"): item for item in existing.get("daily", []) if item.get("date")}
     for item in new_sleep:
-        by_date[item["date"]] = item
+        previous = by_date.get(item["date"], {})
+        # Missing fields from a later Garmin response must not erase history.
+        by_date[item["date"]] = {**previous, **{k: v for k, v in item.items() if v is not None and v != ""}}
     daily = [by_date[day] for day in sorted(by_date)]
     scored = [item for item in daily if item.get("score") is not None]
     latest = scored[-1] if scored else None
@@ -501,6 +689,7 @@ def merge_sleep(existing_path: Path, new_sleep: list[dict[str, Any]]) -> dict[st
             "last_7_days_average_duration_minutes": avg_duration,
             "daily_row_count": len(daily),
             "weekly_row_count": len(existing.get("weekly", [])),
+            **summarize_sleep({"daily": daily}),
         },
     }
 
@@ -543,18 +732,28 @@ def main() -> int:
     payloads = [load_json(path) for path in paths]
     activities = extract_activities(payloads)
     sleep_rows = extract_sleep(payloads)
+    energy_rows = extract_daily_energy(payloads)
     history_path = Path(args.history)
     existing = load_list(history_path)
     merged, added = merge_history(existing, activities, args.since)
     if not args.dry_run:
         save_json(merged, history_path)
         if sleep_rows:
-            save_json(merge_sleep(Path(args.sleep_output), sleep_rows), args.sleep_output)
+            target = Path(args.sleep_output)
+            temporary = target.with_suffix('.tmp')
+            save_json(merge_sleep(target, sleep_rows), temporary)
+            temporary.replace(target)
+        if energy_rows:
+            target = Path(args.energy_output)
+            temporary = target.with_suffix('.tmp')
+            save_json(merge_daily_energy(target, energy_rows), temporary)
+            temporary.replace(target)
     write_report(paths, activities, added, sleep_rows, args.dry_run)
     print(f"Snapshots read: {len(paths)}")
     print(f"Activities parsed: {len(activities)}")
     print(f"Activities added: {len(added)}")
     print(f"Sleep rows parsed: {len(sleep_rows)}")
+    print(f"Daily energy rows parsed: {len(energy_rows)}")
     print(f"Report: {REPORT_PATH}")
     return 0
 

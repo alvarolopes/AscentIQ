@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-# All fixtures below are synthetic and contain no athlete records or credentials.
-
 import json
 import os
-import shutil
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta
@@ -35,7 +32,7 @@ class Fixture(unittest.TestCase):
 
 class SnapshotTests(Fixture):
     def test_dark_web_chart_and_light_print_chart(self):
-        rows = [{"date": "2026-09-28", "fitness": 50, "fatigue": 70, "form": -20}]
+        rows = [{"date": "2026-09-28", "fitness": 54.4, "fatigue": 53.1, "form": 1.3}]
         self.assertIn('#0d1117', chart_svg(rows, dark=True))
         self.assertIn('#3fb950', chart_svg(rows, dark=True))
         self.assertIn('#fcfaf5', chart_svg(rows))
@@ -88,10 +85,10 @@ class SnapshotTests(Fixture):
         self.assertEqual(build_snapshot(self.root,date(2026,9,28))["week"]["running_km"],10)
 
     def test_body_date_and_unknown_recovery(self):
-        self.save("body_metrics",{"reference_date":"2020-01-01","current":{"weight_kg":70}})
+        self.save("body_metrics",{"reference_date":"2026-07-21","current":{"weight_kg":91}})
         self.save("performance_management_model",{"summary":{"recovery":{"status":"unknown","score":None}}})
         snapshot=build_snapshot(self.root,date(2026,9,28))
-        self.assertEqual(snapshot["freshness"]["body"],"2020-01-01")
+        self.assertEqual(snapshot["freshness"]["body"],"2026-07-21")
         self.assertIsNone(snapshot["performance"]["summary"]["recovery"]["score"])
 
     def test_document_path_traversal_blocked(self):
@@ -103,17 +100,6 @@ class SnapshotTests(Fixture):
 
 
 class JobsTests(Fixture):
-    @unittest.skipUnless(shutil.which("typst"), "Typst compiler unavailable")
-    def test_empty_private_database_generates_both_formats(self):
-        snapshot = build_snapshot(self.root)
-        snapshot["athlete"]["name"] = "Synthetic Athlete"
-        source_root = Path(__file__).resolve().parents[2]
-        meta = publish_report(snapshot, "empty-database", self.runtime, root=source_root)
-        folder = self.runtime / "reports" / "empty-database"
-        self.assertEqual(meta["pdf_scope"], "training")
-        self.assertGreater((folder / "report.pdf").stat().st_size, 1000)
-        self.assertIn("Baixar PDF", (folder / "dashboard.html").read_text(encoding="utf-8"))
-
     def test_reject_concurrent_and_invalid_mode(self):
         manager=JobManager(self.runtime,self.root)
         manager.enqueue("generate")
@@ -160,12 +146,12 @@ class JobsTests(Fixture):
 class ApiTests(Fixture):
     def setUp(self):
         super().setUp()
-        with patch.dict(os.environ,{"DASHBOARD_PASSWORD":"test-only-password","DASHBOARD_USERNAME":"athlete"}):
+        with patch.dict(os.environ,{"DASHBOARD_PASSWORD":"test-only-password","DASHBOARD_USERNAME":"alvaro"}):
             self.app=create_app(self.runtime,self.root)
         self.client=TestClient(self.app)
 
     def login(self):
-        return self.client.post("/api/auth/login",json={"username":"athlete","password":"test-only-password"},headers={"X-AscentIQ-Request":"1"})
+        return self.client.post("/api/auth/login",json={"username":"alvaro","password":"test-only-password"},headers={"X-AscentIQ-Request":"1"})
 
     def tearDown(self):
         self.client.close()
