@@ -44,6 +44,11 @@ def schedule_slot(current: datetime) -> datetime:
     return slot if current >= slot else slot - timedelta(days=7)
 
 
+def sleep_schedule_slot(current: datetime) -> datetime:
+    slot = current.astimezone(TZ).replace(hour=10, minute=0, second=0, microsecond=0)
+    return slot if current >= slot else slot - timedelta(days=1)
+
+
 class JobManager:
     def __init__(self, runtime: Path, root: Path = ROOT, *, recover_interrupted: bool = True):
         self.runtime, self.root = runtime, root
@@ -98,7 +103,8 @@ class JobManager:
                     warnings = run_database_pipeline(job, self.root, self.runtime, progress)
                     self.update(job["id"], "partial" if warnings else "completed", "Relatorio publicado" if not warnings else "Relatorio publicado com fontes parciais", warnings)
                     return
-                warnings = sync_sources(self.root, progress) if job["mode"] == "sync" else []
+                sources = ("garmin",) if job["mode"] == "sync-garmin" else ("hevy",) if job["mode"] == "sync-hevy" else ("garmin", "hevy")
+                warnings = sync_sources(self.root, progress, sources) if job["mode"] != "generate" else []
                 rebuild(self.root, progress)
                 snapshot = build_snapshot(self.root)
                 snapshot["sync_warnings"] = warnings
@@ -123,9 +129,27 @@ class JobManager:
             with self.db() as conn:
                 conn.execute("UPDATE settings SET value=? WHERE key='scheduled_slot'", (slot,))
 
+    def tick_sleep_schedule(self, current: datetime):
+        if os.environ.get("DASHBOARD_SLEEP_SCHEDULE_ENABLED", "true").lower() != "true":
+            return
+        prefix = 'daily-sleep:' + sleep_schedule_slot(current).date().isoformat() + ':'
+        with self.db() as conn:
+            attempts = [dict(row) for row in conn.execute("SELECT * FROM jobs WHERE schedule_key LIKE ? ORDER BY created_at DESC", (prefix + '%',))]
+        if any(job['status'] in ('completed', 'queued', 'running') for job in attempts) or len(attempts) >= 3:
+            return
+        if attempts:
+            last = max(datetime.fromisoformat(job['finished_at'] or job['created_at']) for job in attempts)
+            if current - last < timedelta(hours=1):
+                return
+        try:
+            self.enqueue('sync-garmin', schedule_key=prefix + str(len(attempts) + 1))
+        except (RuntimeError, sqlite3.IntegrityError):
+            return
+
     def loop(self):
         while not self.stop.is_set():
             self.tick_schedule(datetime.now(TZ))
+            self.tick_sleep_schedule(datetime.now(TZ))
             with self.db() as conn:
                 row = conn.execute("SELECT * FROM jobs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
             if row:

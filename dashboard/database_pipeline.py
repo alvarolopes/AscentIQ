@@ -51,7 +51,21 @@ def run_database_pipeline(job, root, runtime, progress=lambda _: None, replaceme
                 shutil.copytree(root / "scripts",stage / "scripts",ignore=shutil.ignore_patterns("__pycache__"))
                 shutil.copytree(root / "dashboard" / "templates",stage / "dashboard" / "templates")
                 sources = ("garmin",) if job["mode"] == "sync-garmin" else ("hevy",) if job["mode"] == "sync-hevy" else ("garmin","hevy")
-                warnings = sync_sources(stage,progress,sources) if job["mode"] != "generate" else []
+                try:
+                    warnings = sync_sources(stage,progress,sources) if job["mode"] != "generate" else []
+                finally:
+                    # Keep responses even if a later calculation, PDF or transaction fails.
+                    for source in ("garmin_mcp_exports", "hevy_api_exports"):
+                        for path in (stage / "data" / source).rglob("*"):
+                            if path.is_file():
+                                target = runtime / "provider_exports" / source / job["id"] / path.relative_to(stage / "data" / source)
+                                target.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copyfile(path, target)
+                    sleep = stage / "data" / "garmin_sleep_reference_2026_04.json"
+                    if sleep.exists():
+                        target = runtime / "sleep-history" / (job["id"] + ".json")
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(sleep, target)
                 progress("Recalculando a mesma versao do modelo")
                 rebuild(stage,progress)
                 snapshot = build_snapshot(stage)

@@ -8,6 +8,7 @@ COPY dashboard/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt fitdecode==0.11.0 pypdf==6.9.0 mcp-garmin==0.3.0
 COPY scripts /app/scripts
 COPY dashboard /app/dashboard
+COPY tests /app/tests
 RUN useradd --create-home --uid 1000 athlete && mkdir -p /app/data /app/analysis/context /app/runtime/dashboard /app/activities/notes/medical && chown -R athlete:athlete /app
 USER athlete
 EXPOSE 8788

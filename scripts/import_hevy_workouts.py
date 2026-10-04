@@ -14,7 +14,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 ANALYSIS_DIR = ROOT / "analysis" / "context"
-DEFAULT_INPUT = ROOT / "activities" / "hevy" / "workouts.csv"
+DEFAULT_INPUT = Path(r"C:\Users\alvar\Downloads\workouts.csv")
 DEFAULT_API_INPUT = DATA_DIR / "hevy_api_exports" / "hevy_workouts_latest.json"
 HEVY_OUT = DATA_DIR / "hevy_workouts.json"
 CONSOLIDATED_OUT = DATA_DIR / "strength_training_consolidated.json"

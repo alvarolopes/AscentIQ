@@ -27,6 +27,16 @@ def bootstrap():
     migrate()
 
 
+def initialize_empty():
+    """Explicit first-use path; never imports examples or replaces existing data."""
+    migrate()
+    repo = PostgresRepository()
+    revision = repo.active()
+    if revision is None:
+        revision = repo.publish({}, reason="empty-installation", expected=None)
+    return {"initialized": True, "revision": str(revision), "counts": repo.counts()}
+
+
 def import_data(root):
     migrate()
     repo = PostgresRepository()
@@ -112,9 +122,13 @@ def integration_tests():
         conn.execute(sql.SQL("CREATE DATABASE {} OWNER {}").format(sql.Identifier(database),sql.Identifier(os.environ["PGUSER"])))
     try:
         env = {**os.environ,"PGDATABASE":database,"DATABASE_TEST_ENABLED":"1","DATABASE_BACKEND":"json"}
-        result = subprocess.run(["python","-m","unittest","discover","-s","dashboard/tests","-v"],env=env)
-        if result.returncode:
-            raise RuntimeError("Integration tests failed")
+        first_use = subprocess.run(["python", "-B", "-m", "dashboard.tests.empty_installation_smoke"], env=env)
+        if first_use.returncode:
+            raise RuntimeError("Empty PostgreSQL installation failed")
+        for suite in ("dashboard/tests", "tests"):
+            result = subprocess.run(["python","-B","-m","unittest","discover","-s",suite],env=env)
+            if result.returncode:
+                raise RuntimeError("Integration tests failed: " + suite)
     finally:
         with connect(**admin) as conn:
             conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database)))
@@ -123,7 +137,7 @@ def integration_tests():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command",choices=("bootstrap","import","validate","status","export","run","restore-test","test","replace"))
+    parser.add_argument("command",choices=("bootstrap","init-empty","import","validate","status","export","run","restore-test","test","replace"))
     parser.add_argument("--root",type=Path,default=ROOT)
     parser.add_argument("--output",type=Path)
     parser.add_argument("--archive",type=Path)
@@ -134,6 +148,8 @@ def main():
     if args.command == "bootstrap":
         bootstrap()
         result = {"migrated":True}
+    elif args.command == "init-empty":
+        result = initialize_empty()
     elif args.command == "test":
         result = integration_tests()
     elif args.command == "import":

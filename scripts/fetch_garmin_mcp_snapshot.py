@@ -31,7 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--all-activities", action="store_true", help="Fetch activities with paginated get_activities until empty.")
     parser.add_argument("--activity-page-size", type=int, default=100)
     parser.add_argument("--max-activities", type=int, default=5000)
-    parser.add_argument("--known-activity-history", help="Local training history; omit already imported Garmin activity IDs.")
+    parser.add_argument("--known-activity-history", help="Local history; refresh known IDs inside the requested correction window.")
+    parser.add_argument("--skip-known-activities", action="store_true", help="Optional legacy mode: omit known IDs instead of revisiting the requested window.")
     parser.add_argument("--sleep-tool", default="get_sleep_data")
     parser.add_argument("--skip-sleep", action="store_true")
     parser.add_argument(
@@ -161,13 +162,18 @@ def activity_id(item: Any) -> int | None:
     return None
 
 
-def filter_known_activities(activities: Any, known_ids: set[int]) -> Any:
+def filter_known_activities(activities: Any, known_ids: set[int], start_date: date | None = None, end_date: date | None = None) -> Any:
     if isinstance(activities, list):
-        return [item for item in activities if activity_id(item) not in known_ids]
+        def include(item):
+            if activity_id(item) not in known_ids:
+                return True
+            day = activity_calendar_date(item)
+            return day is not None and start_date is not None and end_date is not None and start_date <= day <= end_date
+        return [item for item in activities if include(item)]
     if isinstance(activities, dict):
         for key in ("result", "activities", "items"):
             if isinstance(activities.get(key), list):
-                return {**activities, key: filter_known_activities(activities[key], known_ids)}
+                return {**activities, key: filter_known_activities(activities[key], known_ids, start_date, end_date)}
     return activities
 
 
@@ -177,6 +183,7 @@ async def fetch_all_activities(
     start_date: date,
     end_date: date,
     known_ids: set[int] | None = None,
+    refresh_known_in_window: bool = False,
 ) -> dict[str, Any]:
     start = 0
     pages: list[Any] = []
@@ -184,6 +191,7 @@ async def fetch_all_activities(
     reached_start_date = False
     known_ids = known_ids or set()
     skipped_known = 0
+    refreshed_known = 0
     while start < args.max_activities:
         payload = await call_tool_safely(
             session,
@@ -204,7 +212,11 @@ async def fetch_all_activities(
             item_date = activity_calendar_date(item)
             if item_date is None or start_date <= item_date <= end_date:
                 if activity_id(item) in known_ids:
-                    skipped_known += 1
+                    if refresh_known_in_window and item_date is not None:
+                        filtered_items.append(item)
+                        refreshed_known += 1
+                    else:
+                        skipped_known += 1
                 else:
                     filtered_items.append(item)
             if item_date is not None and item_date < start_date:
@@ -223,7 +235,8 @@ async def fetch_all_activities(
         if len(items) < args.activity_page_size:
             break
         start += args.activity_page_size
-    return {"mode": "paginated", "total_items_seen": total_items, "known_items_skipped": skipped_known, "pages": pages}
+    return {"mode": "paginated", "total_items_seen": total_items, "known_items_skipped": skipped_known,
+            "known_items_refreshed": refreshed_known, "pages": pages}
 
 
 def walk_dicts(payload: Any) -> list[dict[str, Any]]:
@@ -301,7 +314,8 @@ async def capture(args: argparse.Namespace) -> int:
                 return 0
 
             if args.all_activities:
-                activities = await fetch_all_activities(session, args, start, end, known_ids)
+                activities = await fetch_all_activities(session, args, start, end, known_ids,
+                                                       refresh_known_in_window=not getattr(args, "skip_known_activities", False))
             else:
                 activities = await call_tool_safely(
                     session,
@@ -310,7 +324,7 @@ async def capture(args: argparse.Namespace) -> int:
                 )
                 if isinstance(activities, dict) and activities.get("error"):
                     raise RuntimeError(f"Garmin activity listing failed: {activities['error']}")
-                activities = filter_known_activities(activities, known_ids)
+                activities = filter_known_activities(activities, known_ids) if getattr(args, "skip_known_activities", False) else filter_known_activities(activities, known_ids, start, end)
             snapshot: dict[str, Any] = {
                 "source": "garmin_mcp",
                 "server_command": args.server_command,

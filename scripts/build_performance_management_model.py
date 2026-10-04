@@ -6,6 +6,10 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+try:
+    from .sleep_data import summarize_sleep
+except ImportError:
+    from sleep_data import summarize_sleep
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
@@ -345,6 +349,23 @@ def recovery_status(score: float | None, delta: float | None) -> str:
 def build_recovery_summary(sleep: dict[str, Any] | None, reference_date: str | None = None) -> dict[str, Any]:
     if not sleep:
         return {"score": None, "status": "unknown", "basis": "none"}
+
+    if sleep.get('daily'):
+        summary = summarize_sleep(sleep, reference_date)
+        latest = summary['latest_daily'] or {}
+        scored = summary['latest_scored_daily'] or {}
+        duration = summary['latest_duration_daily'] or {}
+        # A past score remains a dated reference, never a current score.
+        score = latest.get('score')
+        if reference_date and latest.get('date') and (date.fromisoformat(reference_date) - date.fromisoformat(latest['date'])).days > 2:
+            score = None
+        return {'score': score, 'status': recovery_status(score, None) if score is not None else 'unknown',
+                'basis': 'daily_sleep' if score is not None else 'sleep_without_current_score',
+                'period': latest.get('date'), 'last_scored_date': scored.get('date'),
+                'last_record_date': latest.get('date'), 'last_duration_date': duration.get('date'),
+                'duration_minutes': duration.get('duration_minutes'), 'duration_raw': duration.get('duration_raw'),
+                'quality': latest.get('quality'), 'resting_hr': latest.get('resting_hr'),
+                'body_battery': latest.get('body_battery')}
 
     weekly = sleep.get("weekly") or []
     latest_weekly = (sleep.get("summary") or {}).get("latest_weekly")

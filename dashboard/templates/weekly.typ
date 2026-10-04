@@ -2,7 +2,7 @@
 #let take(items, count) = items.slice(0, calc.min(count, items.len()))
 #let ink = rgb("#20352e")
 #let accent = rgb("#126a61")
-#set document(title: "AscentIQ | Relatório de treinos", author: data.athlete.name)
+#set document(title: "AscentIQ | Relatório de treinos", author: if data.athlete.name == none { () } else { data.athlete.name })
 #set page(paper: "a4", margin: 18mm, numbering: "1", footer: context align(right)[AscentIQ · Treinos · #counter(page).display()])
 #set text(font: "DejaVu Sans", size: 9pt, fill: ink, lang: "pt")
 #set heading(numbering: none)
@@ -17,7 +17,7 @@
 #v(8pt)
 #text(font: "DejaVu Serif", size: 30pt)[Seu treino, em perspectiva.]
 #v(8pt)
-*#data.athlete.name* · Base até #data.freshness.activities
+*#val(data.athlete.name)* · Base até #val(data.freshness.activities)
 
 Gerado em #data.generated_at. Janela móvel de 7 dias: #data.week.start a #data.week.end.
 
@@ -35,17 +35,24 @@ Objetivo de endurance: #val(data.athlete.current_goal).
   metric("FADIGA", summary.at("fatigue", default: none), "Carga aguda / 7 dias"),
   metric("FORMA", summary.at("form", default: none), "Fitness menos fadiga"))
 #v(10pt)
-#image("performance.svg", width: 100%)
+#if data.performance.series.len() > 0 {
+  image("performance.svg", width: 100%)
+} else [Sem série de carga disponível. Registre ou importe atividades para construir o histórico.]
 #for note in data.insights [#text(size: 8pt)[• #note] #parbreak()]
 = Os últimos 7 dias
-#table(columns: (1fr, 1fr, 1fr, 1fr), inset: 8pt, stroke: 0.4pt + rgb("#d8d9cd"),
-  [Corrida], [D+ corrida], [Força], [Séries de trabalho],
-  [#data.week.running_km km], [#data.week.running_elevation_m m], [#data.week.strength_sessions sessões], [#data.week.working_sets])
+#if data.week.activity_count == 0 and data.week.strength_sessions == 0 [
+  Sem atividades registradas nesta janela. Ausência de registro não comprova descanso.
+] else [
+  #table(columns: (1fr, 1fr, 1fr, 1fr), inset: 8pt, stroke: 0.4pt + rgb("#d8d9cd"),
+    [Corrida], [D+ corrida], [Força], [Séries de trabalho],
+    [#data.week.running_km km], [#data.week.running_elevation_m m], [#data.week.strength_sessions sessões], [#data.week.working_sets])
 
-Volume registrado de força: #data.week.strength_volume_kg kg·repetições.
+  Volume registrado de força: #data.week.strength_volume_kg kg·repetições.
+]
 
 #pagebreak()
 = Corridas recentes
+#if data.activities.filter(x => x.kind == "running").len() == 0 [Sem corridas registradas.]
 #table(columns: (auto, 2fr, auto, auto, auto, auto), inset: 5pt, stroke: 0.4pt + rgb("#d8d9cd"),
   table.header([Data], [Atividade], [km], [Tempo], [FC média], [D+ / m]),
   ..take(data.activities.filter(x => x.kind == "running"), 20).map(x => (
@@ -53,6 +60,7 @@ Volume registrado de força: #data.week.strength_volume_kg kg·repetições.
   )).flatten())
 #pagebreak()
 = Diário de força
+#if data.strength.len() == 0 [Sem sessões de força registradas.]
 Últimas seis sessões consolidadas. Aquecimentos são identificados separadamente quando disponíveis.
 
 #for workout in take(data.strength, 6) [
