@@ -4,6 +4,8 @@ Referência: [SPEC_PLATAFORMA_SAUDE_FITNESS.md](../SPEC_PLATAFORMA_SAUDE_FITNESS
 
 ## Resultado de execução conhecido
 
+Atualização de 05/10/2026: metas diárias com Ollama, histórico, pausa, concorrência e indicadores de consumo/meta têm cobertura em `test_nutrition_targets.py` e `test_personal_api.py`. A inferência real e a apresentação na alimentação foram conferidas em um container descartável com perfil, treinos e refeição fictícios. O serviço preserva a última meta em falhas e identifica dados insuficientes. Método e limites: [NUTRITION_TARGETS.md](NUTRITION_TARGETS.md). As evidências anteriores abaixo conservam suas datas e escopos.
+
 Evidências disponíveis em 03/10/2026, com fontes sintéticas para as suítes:
 
 - Rodada final completa em ambiente com PostgreSQL descartável: **105 testes de `dashboard/tests` e 28 testes de `tests`, total de 133 testes Python aprovados, sem testes ignorados**. Os 28 incluem 21 de importações e 7 de sincronização incremental. Cobrem migrações, persistência operacional, concorrência, FIT válido com CRC, GPX como rota, vínculos reversíveis, energia Garmin e ordem temporal dos snapshots.

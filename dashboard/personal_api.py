@@ -48,6 +48,14 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     app.state.personal_snapshot = snapshot
 
+    from dashboard.nutrition_targets import NutritionTargets
+    targets = NutritionTargets(health, snapshot)
+    app.state.nutrition_targets = targets
+
+    @app.get('/api/nutrition-targets/{day}')
+    def nutrition_targets(day: date):
+        return targets.view(day)
+
     def perform(callback):
         try:
             return callback()
@@ -66,7 +74,8 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     def personal(day, days=14):
         snap = snapshot()
-        return {'state': health.read(), 'summary': health.summary(day, snap, diary, days=days)}
+        return {'state': health.read(), 'summary': health.summary(day, snap, diary, days=days),
+                'nutrition_targets': targets.view(day)}
 
     @app.get('/api/personal')
     def read_personal(day: date | None = None, days: int = Query(default=14, ge=1, le=90)):
@@ -74,7 +83,9 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     @app.post('/api/personal/profile')
     def profile(payload: dict = Body(...)):
-        return perform(lambda: health.update('profile', payload.get('value', {}), payload.get('revision')))
+        result = perform(lambda: health.update('profile', payload.get('value', {}), payload.get('revision')))
+        targets.refresh_async()
+        return result
 
     @app.post('/api/personal/preferences')
     def preferences(payload: dict = Body(...)):
@@ -82,6 +93,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
         for field, env in (('weekly_sync', 'DASHBOARD_SCHEDULE_ENABLED'), ('daily_sync', 'DASHBOARD_SLEEP_SCHEDULE_ENABLED')):
             if field in result['preferences']:
                 os.environ[env] = str(bool(result['preferences'][field])).lower()
+        targets.refresh_async()
         return result
 
     @app.post('/api/personal/review')
@@ -99,13 +111,17 @@ def install_personal_routes(app, runtime, root, diary, manager):
     def save_record(kind: str, payload: dict = Body(...)):
         if kind not in allowed:
             raise HTTPException(404)
-        return perform(lambda: health.save(kind, payload.get('record', {}), payload.get('revision')))
+        result = perform(lambda: health.save(kind, payload.get('record', {}), payload.get('revision')))
+        targets.refresh_async()
+        return result
 
     @app.post('/api/personal/{kind}/remove')
     def remove_record(kind: str, payload: dict = Body(...)):
         if kind not in allowed:
             raise HTTPException(404)
-        return perform(lambda: health.remove(kind, payload.get('id'), payload.get('revision')))
+        result = perform(lambda: health.remove(kind, payload.get('id'), payload.get('revision')))
+        targets.refresh_async()
+        return result
 
     @app.get('/api/integrations')
     def integrations():
@@ -116,7 +132,9 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     @app.post('/api/integrations/{provider}')
     def configure_provider(provider: str, payload: dict = Body(...)):
-        return perform(lambda: {'providers': providers.configure(provider, payload.get('credentials'), enabled=payload.get('enabled', True))})
+        result = perform(lambda: {'providers': providers.configure(provider, payload.get('credentials'), enabled=payload.get('enabled', True))})
+        targets.refresh_async()
+        return result
 
     @app.post('/api/integrations/{provider}/disconnect')
     def disconnect_provider(provider: str):

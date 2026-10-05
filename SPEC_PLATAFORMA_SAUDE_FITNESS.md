@@ -448,6 +448,8 @@ Revisão semanal é o padrão inicial proposto; janela de análise e frequência
 
 **RF-22 — Propostas e decisões rastreáveis.** Por padrão, ajustes relevantes são propostos e aceitos ou rejeitados pelo usuário. Se existir um modo de adaptação automática, deve ser uma opção configurável, com limites claros, possibilidade de desativação e registro de cada mudança.
 
+No modo automático solicitado para esta plataforma individual, o objetivo chama a IA local com peso datado, perfil suficiente, resumo das atividades e recuperação para definir calorias e proteína. Reavaliar diariamente e após mudanças relevantes; salvar uma versão com motivo e limitações. Mostrar na alimentação consumo/meta e quanto falta, preservando pendências e cobertura parcial. A opção pode ser pausada, e falhas conservam a última referência. Não recalcular metas passadas nem compensar uma refeição com restrição. A implementação e seus parâmetros estão descritos em [NUTRITION_TARGETS.md](docs/NUTRITION_TARGETS.md).
+
 Cada proposta informa: plano anterior, plano sugerido, dados usados, razão, limitações, data de vigência e próxima revisão. O usuário pode rejeitar, alterar, voltar à versão anterior ou mudar a prioridade do objetivo.
 
 Propostas pendentes também dependem de versões. Antes do aceite, verificar se o objetivo, o plano vigente ou os dados usados mudaram. Se a mudança for relevante, marcar a proposta como desatualizada e regenerar ou solicitar uma revisão informada do novo contexto. Não aplicar silenciosamente um ajuste fundamentado em evidências que já foram corrigidas.
