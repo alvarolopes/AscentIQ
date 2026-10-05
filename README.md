@@ -7,7 +7,8 @@ Uma plataforma individual para reunir treinos, alimentação, sono, medidas e ob
 - Painel do dia com alimentação registrada, gasto estimado, déficit utilizável, margem para a meta e limites de cobertura. Um diário vazio nunca prova jejum.
 - Garmin Connect e Hevy, sincronização incremental, sono preservado e consolidação de sessões de força. Importação manual e por CSV, FIT e GPX, com originais privados, repetição segura e reconciliação reversível.
 - Diário alimentar por texto ou foto, estimativa automática da IA ao salvar, refeições pendentes em caso de falha, correções, favoritos e receitas por porções. Cobertura do dia e estimativas pendentes são informações independentes.
-- Perfil, preferências, medidas, check-ins e objetivos com prioridades. Planos datados e propostas de adaptação com evidência, revisão e aceite explícito.
+- Perfil, preferências, medidas, check-ins e objetivos com prioridades. Metas alimentares diárias com IA local, planos datados e propostas de adaptação com evidência, revisão e aceite explícito.
+- Consumo/meta de calorias e nutrientes na alimentação, com saldo restante. Peso, objetivo e treinos orientam a atualização automática, que pode ser pausada.
 - Assistente com período e contexto visíveis, histórico de respostas e uso manual de outra IA. Referências médicas só entram mediante seleção explícita.
 - Documentos privados com extração e revisão, planejamento de refeições e treinos, gráficos e relatórios esportivos em HTML/PDF.
 - PostgreSQL, autenticação local, credenciais de fontes criptografadas, exportação JSON/ZIP e backup criptografado com teste de restauração separado.
@@ -38,6 +39,7 @@ Para migrar uma base anterior, siga [DATABASE.md](docs/DATABASE.md): use a impor
 - [Requisitos e evidência de aceite](docs/ACCEPTANCE.md)
 - [Armazenamento e recuperação](docs/DATABASE.md)
 - [IA local sem cobrança de API, com Ollama](docs/OLLAMA.md)
+- [Metas alimentares automáticas e parâmetros](docs/NUTRITION_TARGETS.md)
 
 ```powershell
 docker compose --profile maintenance run --rm db-tools test
@@ -47,6 +49,6 @@ Esse comando cria um banco temporário, verifica a instalação vazia e executa 
 
 ## Limites explícitos
 
-O cálculo de gasto e a adaptação são estimativas e regras transparentes do produto. Salvar uma refeição autoriza a estimativa automática da IA; metas e planos continuam exigindo revisão. Ollama executa o modelo local sem cobrança por chamada; precisa do modelo baixado e de recursos do computador. OpenAI é opcional e exige chave/créditos da API. Não há fallback automático para API paga no modo local. Integrações dependem do serviço de origem e das credenciais do usuário. Novos conectores móveis, voz e códigos de barras permanecem evoluções opcionais da SPEC.
+O cálculo de gasto e a adaptação são estimativas e regras transparentes do produto. Salvar uma refeição autoriza a estimativa automática da IA. A opção de metas diárias publica planos com limites e histórico; pode ser pausada. O fluxo de propostas continua exigindo aceite. Ollama executa o modelo local sem cobrança por chamada; precisa do modelo baixado e de recursos do computador. OpenAI é opcional e exige chave/créditos da API. Não há fallback automático para API paga no modo local. Integrações dependem do serviço de origem e das credenciais do usuário. Novos conectores móveis, voz e códigos de barras permanecem evoluções opcionais da SPEC.
 
 Dados reais, documentos, fotos, relatórios e credenciais não fazem parte do código público. O servidor web escuta somente no endereço local por padrão.

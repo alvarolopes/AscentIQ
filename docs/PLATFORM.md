@@ -8,7 +8,7 @@ Referência de produto: [SPEC_PLATAFORMA_SAUDE_FITNESS.md](../SPEC_PLATAFORMA_SA
 2. Guardar observações, reconhecer lacunas e revisar possíveis duplicatas.
 3. Registrar alimentação por descrição ou foto; salvar calcula e registra automaticamente a estimativa de calorias e nutrientes.
 4. Declarar a cobertura alimentar; calcular gasto e balanço apenas com entradas utilizáveis.
-5. Acompanhar medidas, treino, sono e check-ins; solicitar revisão do objetivo.
+5. Acompanhar medidas, treino, sono e check-ins; atualizar metas alimentares diariamente com IA local quando a opção estiver ativa.
 6. Avaliar a proposta, aceitar/rejeitar e acompanhar a versão vigente do plano.
 7. Consultar contexto e análises datadas, corrigir registros e exportar a memória pessoal.
 
@@ -25,6 +25,7 @@ As áreas da interface agrupam o dia, energia, alimentação, corpo/check-in, ob
 | `dashboard/health.py` | Perfil/objetivos versionados, gasto/balanço, progresso e propostas determinísticas |
 | `dashboard/food_store.py` | Diário revisável, calorias pendentes, cobertura e histórico de alterações |
 | `dashboard/nutrition.py` | Validação das estimativas alimentares e chamada opcional da IA |
+| `dashboard/nutrition_targets.py` | Metas alimentares diárias com Ollama, contexto datado, limites e versões do plano |
 | `dashboard/assistant.py` | Contexto limitado ao período, análise/importação de resposta e proveniência |
 | `dashboard/artifacts.py` | Documentos, observações revisadas, receitas/favoritos, planejamento e análises |
 | `dashboard/provider_settings.py` | Configuração privada e credenciais cifradas, sem retorná-las nas respostas |
@@ -119,7 +120,9 @@ O progresso corporal usa regressão linear de peso por dia, expressa por semana,
 
 A revisão compara cobertura, tendência, ingestão em relação ao plano, recuperação relatada, sono, carga e objetivos concorrentes. Pode manter, propor ajuste ou pedir dados melhores. Há condições que bloqueiam uma redução adicional; não há compensação punitiva por uma refeição nem ajuste baseado em um único dia.
 
-O plano vigente só muda após a decisão do usuário. A proposta guarda evidências, método, versão anterior, sugestão, motivo e próxima revisão. Seu fingerprint é revalidado no aceite; alterações relevantes invalidam a proposta. Uma decisão tardia tem vigência posterior à data real de aceite, sem reescrever metas passadas. Adaptação automática sem confirmação não foi habilitada por esta implementação.
+A opção de metas alimentares automáticas publica diariamente calorias e proteína com Ollama, usando peso, objetivo, atividades e recuperação. Também recalcula após mudanças relevantes. A alimentação mostra registrado/meta e saldo provisório quando há nutrientes pendentes. A opção pode ser pausada; versões anteriores e planos futuros são preservados. Veja [NUTRITION_TARGETS.md](NUTRITION_TARGETS.md) para os dados exigidos, os parâmetros, o histórico e o tratamento de falhas.
+
+O fluxo separado de propostas continua exigindo decisão do usuário. A proposta guarda evidências, método, versão anterior, sugestão, motivo e próxima revisão. Seu fingerprint é revalidado no aceite; alterações relevantes invalidam a proposta. Uma decisão tardia tem vigência posterior à data real de aceite, sem reescrever metas passadas. Pause as metas automáticas para manter uma referência manual ou profissional sem substituição pela IA.
 
 ## IA e escopo autorizado
 

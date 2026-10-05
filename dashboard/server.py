@@ -99,7 +99,9 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         manager.start()
+        app.state.nutrition_targets.start()
         yield
+        app.state.nutrition_targets.close()
         manager.close()
 
     app = FastAPI(title="AscentIQ Private Dashboard", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -198,7 +200,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @app.get('/api/food/{day}')
     def food(day: date):
-        return {**food_diary.read(day), **configuration()}
+        return {**food_diary.read(day), **configuration(), 'targets': app.state.nutrition_targets.view(day)}
 
     @app.get('/api/ai/configuration')
     def ai_configuration():

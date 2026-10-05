@@ -412,3 +412,7 @@ textarea:focus-visible { outline:2px solid var(--link); outline-offset:3px; }
   .personal-form input,.personal-form textarea,.question-label textarea { font-size:16px; }
   .personal-form select { font-size:14px; }
 }
+.daily-nutrition-progress .metric-value { font-size: clamp(1.35rem, 2.3vw, 2rem); overflow-wrap: anywhere; }
+.daily-nutrition-progress .target-total { font-size: .75em; color: var(--muted, #8b98a8); }
+.daily-nutrition-progress progress { width: 100%; height: .55rem; accent-color: #67d5b5; }
+.nutrition-target-notice { margin: 0 0 1.2rem; }

@@ -31,6 +31,16 @@ class Fixture(unittest.TestCase):
 
 
 class SnapshotTests(Fixture):
+    def test_legacy_height_is_available_without_inventing_metabolic_sex(self):
+        self.save('athlete_profile', {'age': 43, 'height_m': 1.78})
+        athlete = build_snapshot(self.root, date(2026, 9, 28))['athlete']
+        self.assertEqual(athlete['height_cm'], 178)
+        self.assertIsNone(athlete['sex'])
+        self.save('athlete_profile', {'height_cm': 180, 'height_m': 1.78, 'sex': 'male'})
+        athlete = build_snapshot(self.root, date(2026, 9, 28))['athlete']
+        self.assertEqual(athlete['height_cm'], 180)
+        self.assertEqual(athlete['sex'], 'male')
+
     def test_dark_web_chart_and_light_print_chart(self):
         rows = [{"date": "2026-09-28", "fitness": 54.4, "fatigue": 53.1, "form": 1.3}]
         self.assertIn('#0d1117', chart_svg(rows, dark=True))

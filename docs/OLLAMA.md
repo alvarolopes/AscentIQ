@@ -1,6 +1,6 @@
 # IA local com Ollama
 
-A alimentação, o assistente e as análises podem usar Ollama sem chave OpenAI e sem cobrança por chamada de API. O modelo roda no computador; usa processamento, memória, armazenamento e energia locais. As calorias continuam sendo estimativas que precisam de revisão.
+A alimentação, as metas diárias, o assistente e as análises podem usar Ollama sem chave OpenAI e sem cobrança por chamada de API. O modelo roda no computador; usa processamento, memória, armazenamento e energia locais. As calorias continuam sendo estimativas que precisam de revisão.
 
 ## Instalar
 
@@ -32,6 +32,8 @@ Na alimentação, descreva quantidades/preparo ou anexe uma foto e clique em Sal
 O status da alimentação é atualizado quando a aba volta ao foco ou a conexão muda em outra aba, sem apagar o rascunho. Falhas preservam os dados e não contam calorias desconhecidas como zero. O primeiro pedido pode levar mais tempo por carregar o modelo; os pedidos seguintes mantêm-no aquecido por cinco minutos. O prazo da API local é de 180 segundos, com proxy de 210 segundos.
 
 ## Conferir
+
+Com perfil e objetivo preenchidos, a opção de metas alimentares automáticas chama exclusivamente o Ollama para atualizar calorias e proteína diariamente e após mudanças relevantes. A alimentação mostra consumo/meta e quanto falta. Consulte [NUTRITION_TARGETS.md](NUTRITION_TARGETS.md) para método, entradas exigidas, pausa e histórico.
 
 ```powershell
 docker compose --profile local-ai exec ollama ollama list

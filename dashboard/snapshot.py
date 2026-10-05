@@ -200,7 +200,9 @@ def _build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
     race_index = read_dataset(root, "analysis/races/last_10_race_performance_index.json", {})
     return {"schema_version": 1, "model_version": "athlete-load-42-7/v1", "generated_at": datetime.now(TZ).isoformat(timespec="seconds"),
             "as_of": today.isoformat(), "source_digest": digest.hexdigest(), "freshness": freshness,
-            "athlete": {"name": profile.get("name"), "age": profile.get("age"), "current_goal": profile.get("current_goal"),
+            "athlete": {"name": profile.get("name"), "age": profile.get("age"),
+                        "height_cm": profile.get("height_cm") or (profile['height_m'] * 100 if isinstance(profile.get('height_m'), (int, float)) and not isinstance(profile.get('height_m'), bool) else None),
+                        "sex": profile.get('sex'), "current_goal": profile.get("current_goal"),
                         "endurance_goal": profile.get("current_endurance_goal")},
             "goals": {"health": goals.get("current_health_goal"), "endurance": goals.get("current_primary_goal")},
             "performance": {"summary": summary, "series": series, "notes": model.get("model_notes", [])},

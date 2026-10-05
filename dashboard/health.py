@@ -171,6 +171,8 @@ def _validate_section(section, value):
         if "name" in row:
             row["name"] = _text(row["name"], "Nome", 200)
     elif section == "preferences":
+        if 'auto_nutrition_targets' in row and not isinstance(row['auto_nutrition_targets'], bool):
+            raise ValueError('A atualização automática das metas deve ser verdadeiro ou falso.')
         if row.get("energy_method", "auto") not in {"auto", "model", "wearable"}:
             raise ValueError("Método de gasto deve ser auto, model ou wearable.")
         limits = {"activity_factor": (1, 2.5), "review_days": (7, 90), "review_frequency_days": (1, 90),
@@ -265,6 +267,9 @@ def _validate_record(kind, value):
             raise ValueError("Associe o plano a um objetivo.")
         if row.get("target_kcal") is not None:
             _number(row["target_kcal"], "Meta de ingestão", 500, 10000)
+        for key in ('protein_g', 'carbs_g', 'fat_g'):
+            if row.get(key) is not None:
+                _number(row[key], key, 0, 2500)
         for key in ("effective_from", "next_review_date"):
             if row.get(key):
                 row[key] = _day(row[key]).isoformat()
@@ -283,7 +288,7 @@ def _legacy_profile(snapshot):
     meta = snapshot.get("meta", {})
     athlete = meta.get("athlete", snapshot.get("athlete", {})) or {}
     return {key: value for key, value in {"name": athlete.get("name"), "age": athlete.get("age"),
-                                        "height_cm": athlete.get("height_cm")}.items() if value is not None}
+                                        "height_cm": athlete.get("height_cm"), "sex": athlete.get('sex')}.items() if value is not None}
 
 
 def _effective_values(state, section, day):
@@ -395,9 +400,16 @@ def _initial_plan(state, goal, day):
 
 def _publish_plan(state, plan):
     for prior in state["plans"]:
-        if prior.get("goal_id") == plan["goal_id"] and prior.get("status") in {"active", "provisional"}:
+        if (prior.get("goal_id") == plan["goal_id"] and prior.get("status") in {"active", "provisional"}
+                and prior.get('effective_from', '0001-01-01') <= plan['effective_from']):
             prior["status"] = "superseded"
             prior["valid_to"] = (_day(plan["effective_from"]) - timedelta(days=1)).isoformat()
+    future = [p['effective_from'] for p in state['plans'] if p.get('goal_id') == plan['goal_id']
+              and p.get('status') in {'active', 'provisional', 'superseded'}
+              and p.get('effective_from', '') > plan['effective_from']
+              and (not p.get('valid_to') or p['valid_to'] >= p['effective_from'])]
+    if future:
+        plan['valid_to'] = (_day(min(future)) - timedelta(days=1)).isoformat()
     state["plans"].append(plan)
 
 

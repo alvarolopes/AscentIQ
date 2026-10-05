@@ -199,6 +199,21 @@ class PersonalApiTests(unittest.TestCase):
         self.assertEqual(current['entries'][0]['text'], 'Edição concorrente preservada')
         self.assertIsNone(current['entries'][0]['analysis'])
 
+    def test_daily_targets_are_authenticated_and_included_in_food_diary(self):
+        other = TestClient(self.app)
+        self.assertEqual(other.get(f'/api/nutrition-targets/{self.day}').status_code, 401)
+        other.close()
+        self.seed_goal()
+        self.post('/api/integrations/ai', {'credentials': {'provider': 'ollama', 'local_model': 'qwen3.5:4b'}})
+        output = json.dumps({'energy_adjustment_pct': -0.1, 'protein_g_per_kg': 1.8,
+                             'reason': 'Meta sintética para o perfil.', 'limitations': []})
+        with patch('dashboard.nutrition_targets.request_text', return_value=output):
+            self.app.state.nutrition_targets.refresh(self.day)
+        value = self.client.get(f'/api/food/{self.day}').json()
+        self.assertEqual(value['targets']['status'], 'ready')
+        self.assertEqual(value['targets']['protein_g'], 144)
+        self.assertEqual(value['targets']['kcal'], self.summary()['summary']['active_plan']['target_kcal'])
+
     def test_authentication_csrf_and_personal_validation(self):
         unauthenticated = TestClient(self.app)
         for path in ("/api/personal", "/api/export", "/api/assistant/context", "/api/documents", "/api/integrations"):
