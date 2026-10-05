@@ -1,161 +1,52 @@
-# Mountain Performance Athlete Agent
+# AscentIQ — saúde e fitness pessoal
 
-Personal performance analytics system for trail running, endurance training, and high-altitude mountaineering.
+Uma plataforma individual para reunir treinos, alimentação, sono, medidas e objetivos. Os registros ficam estruturados e datados; os cálculos mostram a origem e a cobertura dos dados. A inteligência artificial ajuda a interpretar esse histórico e estimar refeições, sempre com revisão do usuário.
 
-Suggested GitHub description: `Mountain-endurance analytics agent for trail running, GPX/FIT parsing, training-load modeling, and public performance dashboards.`
+## O que funciona
 
-## Why This Exists
+- Painel do dia com alimentação registrada, gasto estimado, déficit utilizável, margem para a meta e limites de cobertura. Um diário vazio nunca prova jejum.
+- Garmin Connect e Hevy, sincronização incremental, sono preservado e consolidação de sessões de força. Importação manual e por CSV, FIT e GPX, com originais privados, repetição segura e reconciliação reversível.
+- Diário alimentar por texto ou foto, IA sob demanda, entrada manual, refeições pendentes, correções, favoritos e receitas por porções. Cobertura do dia e estimativas pendentes são informações independentes.
+- Perfil, preferências, medidas, check-ins e objetivos com prioridades. Planos datados e propostas de adaptação com evidência, revisão e aceite explícito.
+- Assistente com período e contexto visíveis, histórico de respostas e uso manual de outra IA. Referências médicas só entram mediante seleção explícita.
+- Documentos privados com extração e revisão, planejamento de refeições e treinos, gráficos e relatórios esportivos em HTML/PDF.
+- PostgreSQL, autenticação local, credenciais de fontes criptografadas, exportação JSON/ZIP e backup criptografado com teste de restauração separado.
 
-This project turns raw endurance data into a coach-like analytical context. It was built around a real 2026 objective: an Andean expedition in Arequipa, where the priority is not pace, but durability, vertical efficiency, fatigue control, and the ability to keep moving for a long time.
+## Começar do zero
 
-The goal is to combine:
-
-- Sports memory: athlete profile, training history, race history, body metrics, mountain history, and season goals.
-- Data analysis: GPX/FIT parsing, Garmin CSV imports, elevation metrics, heart-rate patterns, load modeling, and trend charts.
-- Coaching interpretation: practical answers about pacing, fatigue, mountain readiness, and whether a workout helps the main objective.
-
-This repository is intentionally portfolio-friendly: it can show the analytical engine and generated dashboards publicly while keeping raw personal health exports private.
-
-## Example Dashboards
-
-### Private Docker Portal
-
-The local authenticated dashboard combines running, strength, body measurements,
-medical records, and Fitness/Fatigue/Form. It includes interactive HTML, native
-Typst HTML snapshots, PDF downloads, and weekly incremental synchronization.
-See [dashboard setup and privacy notes](dashboard/README.md).
-
-### Performance Management Model
-
-![Performance Management Model](analysis/context/performance_management_chart.svg)
-
-### Fitness, Fatigue, and Form - Last 3 Weeks
-
-![Fitness Fatigue Form Last 3 Weeks](analysis/context/fitness_form_fatigue_last_3_weeks.svg)
-
-### Race Performance Index
-
-![Race Performance Index](analysis/races/last_10_race_performance_chart.svg)
-
-## What The Agent Analyzes
-
-- Trail and road races used as endurance training blocks.
-- Long runs, vertical sessions, swims, strength workouts, hikes, and stair sessions.
-- Official GPX files, prioritizing route elevation over watch elevation when available.
-- Garmin activity CSV exports, workout CSV exports, sleep CSV exports, and FIT files.
-- Optional Garmin MCP snapshots used as a read-only import layer.
-- Subjective context such as training intent, fatigue perception, and race strategy.
-
-## Core Metrics
-
-- `vertical_per_km = elevation_gain_m / distance_km`
-- `vertical_speed = elevation_gain_m / duration_hours`
-- `vertical_speed_moving = elevation_gain_m / moving_time_hours`
-- `stopped_time = elapsed_time - moving_time`
-- `mountain_index = distance_km + elevation_gain_m / 100`
-- `heart_rate_efficiency = pace_seconds_per_km / avg_hr`
-- `fitness`: chronic load estimate, smoothed over 42 days.
-- `fatigue`: acute load estimate, smoothed over 7 days.
-- `form`: readiness estimate, calculated as `fitness - fatigue`.
-
-The performance-management model is inspired by training-load concepts, but it is not the proprietary TrainingPeaks algorithm. It is a custom model tuned for this athlete-agent use case.
-
-## Project Structure
-
-```text
-athlete-agent/
-  activities/        Raw local inputs: GPX, FIT, Garmin CSV, notes.
-  analysis/          Generated reports, dashboards, and chart outputs.
-  data/              Athlete memory and private analytical state.
-  docs/              Public documentation for metrics, privacy, and usage.
-  prompts/           System prompt for the coaching analyst agent.
-  scripts/           Importers, parsers, comparison tools, and chart builders.
-```
-
-## Public vs Private Data
-
-Raw Garmin/Strava exports, FIT files, GPX files, PDFs, and athlete JSON databases can contain sensitive health and location data. The `.gitignore` is configured so those files stay local by default.
-
-Recommended public assets:
-
-- Source code in `scripts/`.
-- Documentation in `docs/`.
-- Sanitized sample JSON files.
-- Generated SVG dashboards that are safe to show as portfolio examples.
-
-Recommended private assets:
-
-- Raw activity exports.
-- Sleep exports.
-- Ergometric or cardiopulmonary PDFs.
-- Full athlete history JSON files.
-- Location-rich GPX/FIT files.
-
-## Quick Start
-
-Install optional dependencies:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-Parse an official GPX route:
-
-```bash
-python scripts/parse_gpx.py activities/gpx/example.gpx --category race
-```
-
-Build the performance-management model:
-
-```bash
-python scripts/build_performance_management_model.py
-python scripts/build_last_3_weeks_pmc_chart.py
-```
-
-Import recent Garmin files from a custom folder:
-
-```bash
-ATHLETE_AGENT_DOWNLOADS=/path/to/exports python scripts/import_garmin_recent_data.py
-```
-
-On Windows PowerShell:
+Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preencha duas senhas distintas de banco e mantenha `DATABASE_BACKEND=postgres`. Credenciais Garmin, Hevy e IA são opcionais e podem ser cadastradas no painel.
 
 ```powershell
-$env:ATHLETE_AGENT_DOWNLOADS = "C:\Users\your-user\Downloads"
-python scripts/import_garmin_recent_data.py
+docker compose build api web
+docker compose --profile local-ai up -d db ollama
+docker compose --profile local-ai exec ollama ollama pull qwen3.5:4b
+docker compose --profile maintenance run --rm db-tools bootstrap
+docker compose --profile maintenance run --rm db-tools init-empty
+docker compose up -d api web
 ```
 
-Optional Garmin MCP flow:
+Abra [AscentIQ local](http://localhost:8787). O primeiro acesso está no arquivo privado `runtime/dashboard/access.txt`, salvo quando não foi configurada uma senha no ambiente. Defina seu perfil e objetivo, conecte fontes ou registre dados manualmente. Exemplos deste repositório não viram registros pessoais.
 
-```bash
-python -m pip install -r requirements-mcp.txt
-python scripts/fetch_garmin_mcp_snapshot.py --start-date 2026-06-01 --end-date 2026-06-08
-python scripts/import_garmin_mcp_snapshot.py --input data/garmin_mcp_exports
+Para migrar uma base anterior, siga [DATABASE.md](docs/DATABASE.md): use a importação revisada no lugar de `init-empty`. Não reimporte arquivos antigos sobre uma revisão mais recente do PostgreSQL.
+
+## Especificação e validação
+
+- [SPEC completa de produto](SPEC_PLATAFORMA_SAUDE_FITNESS.md)
+- [Uso, instalação e operação](dashboard/README.md)
+- [Funcionalidades e política de adaptação](docs/PLATFORM.md)
+- [Contratos de importação](docs/IMPORTS.md)
+- [Requisitos e evidência de aceite](docs/ACCEPTANCE.md)
+- [Armazenamento e recuperação](docs/DATABASE.md)
+- [IA local sem cobrança de API, com Ollama](docs/OLLAMA.md)
+
+```powershell
+docker compose --profile maintenance run --rm db-tools test
 ```
 
-See `docs/GARMIN_MCP.md` for authentication, privacy, and server configuration notes.
+Esse comando cria um banco temporário, verifica a instalação vazia e executa as suítes de API, dados, energia, adaptação, importação, concorrência e recuperação. O GitHub Actions executa os testes com PostgreSQL descartável e constrói a UI.
 
-For the normal training update, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\update_training_data.ps1`. This now resumes from the latest locally saved Garmin activity with a seven-day overlap, requests details only for unknown IDs, and reuses the local Hevy snapshot. Use `-FullRefresh` for a historical rebuild or `-IncludeGarminWorkouts` when saved Garmin routines also need refreshing.
+## Limites explícitos
 
-## Coaching Output Format
+O cálculo de gasto e a adaptação são estimativas e regras transparentes do produto. A IA não modifica refeições, metas ou planos sem revisão. Ollama executa o modelo local sem cobrança por chamada; precisa do modelo baixado e de recursos do computador. OpenAI é opcional e exige chave/créditos da API. Não há fallback automático para API paga no modo local. Integrações dependem do serviço de origem e das credenciais do usuário. Novos conectores móveis, voz e códigos de barras permanecem evoluções opcionais da SPEC.
 
-The agent should answer with:
-
-1. Activity summary.
-2. Physiological reading.
-3. Terrain reading.
-4. Comparison with history.
-5. Impact on the season goal.
-6. Practical recommendation.
-
-The operating principle is simple: races are treated as training opportunities for the main mountain objective. Completion, endurance, and recovery quality matter more than chasing pace unless the athlete explicitly changes that goal.
-
-## Portfolio Angle
-
-This project demonstrates:
-
-- Python data pipelines over messy real-world sports exports.
-- Domain modeling for endurance and mountain performance.
-- Custom load modeling and trend visualization.
-- Privacy-aware public presentation of personal analytics.
-- Agent-oriented context design for coaching-style reasoning.
+Dados reais, documentos, fotos, relatórios e credenciais não fazem parte do código público. O servidor web escuta somente no endereço local por padrão.
