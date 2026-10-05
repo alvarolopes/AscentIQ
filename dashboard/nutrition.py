@@ -72,6 +72,19 @@ def estimate(text, image=None):
         content = [{'role': 'user', 'content': [{'type': 'input_text', 'text': text +
             '\nA foto não comprova peso nem ingredientes invisíveis; declare hipóteses.'},
             {'type': 'input_image', 'image_url': image}]}]
+    if configuration()['provider'] == 'ollama':
+        from dashboard.local_ai import request_text
+        schema = {'type': 'object', 'required': ['items', 'notes'], 'properties': {
+            'items': {'type': 'array', 'minItems': 1, 'maxItems': 60, 'items': {
+                'type': 'object', 'required': ['name', *FIELDS], 'properties': {
+                    'name': {'type': 'string'}, **{key: {'type': 'number', 'minimum': 0} for key in FIELDS}}}},
+            'notes': {'type': 'string'}}}
+        output = request_text(INSTRUCTIONS, content, schema=schema)
+        try:
+            result = validate(json.loads(output))
+        except (ValueError, TypeError) as error:
+            raise RuntimeError('A estimativa local ficou incompleta. Revise a descrição e tente novamente; a refeição foi preservada.') from error
+        return {**result, 'source': 'ollama', 'model': configuration()['model']}
     request = Request('https://api.openai.com/v1/responses', data=json.dumps({
         'model': configuration()['model'], 'instructions': INSTRUCTIONS, 'input': content,
         'store': False, 'max_output_tokens': 5000,

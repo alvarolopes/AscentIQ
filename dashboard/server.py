@@ -198,6 +198,10 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     def food(day: date):
         return {**food_diary.read(day), **configuration()}
 
+    @app.get('/api/ai/configuration')
+    def ai_configuration():
+        return configuration()
+
     @app.post('/api/food/{day}/analyze')
     def analyze_food(day: date, payload: FoodRequest):
         if not payload.text.strip():

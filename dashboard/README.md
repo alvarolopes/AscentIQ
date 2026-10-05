@@ -35,11 +35,13 @@ A equação e as regras de adaptação estão em [PLATFORM.md](../docs/PLATFORM.
 
 ## Fontes e IA
 
+Ollama local está disponível sem cobrança de API. Veja [OLLAMA.md](../docs/OLLAMA.md) para instalar o modelo em Docker, habilitar NVIDIA e selecionar o provedor em Dados e fontes. Quando Ollama é selecionado, alimentação, assistente e extração com IA usam somente o modelo local; falhas não acionam OpenAI. As estimativas alimentares continuam exigindo revisão e salvamento.
+
 Credenciais podem ser configuradas em Dados e fontes. Elas ficam criptografadas em `runtime/dashboard/connections`; a chave local deve permanecer privada e entrar no backup. A API devolve status, sem devolver segredos. Desconectar interrompe o uso da fonte e preserva seu histórico. Variáveis privadas de ambiente continuam suportadas.
 
 Garmin revisita uma janela sobreposta para correções de atividades e sono. Hevy usa importação incremental e mantém exercícios/séries quando fornecidos. Falhas preservam observações anteriores e aparecem no histórico de execução. Uma fonte sem credenciais não impede atualizar a outra disponível. MFA Garmin pode exigir autenticação externa antes da sincronização.
 
-IA automática depende de `OPENAI_API_KEY` e acesso ao modelo em `OPENAI_MODEL`. A chave permanece no servidor. As chamadas usam `store: false`, timeout e erros sem segredos. O texto/foto alimentar não recebe o histórico médico. A pergunta ao assistente recebe somente o período e escopo escolhidos. As chamadas são cobradas pelo provedor. Registro manual e importação de respostas funcionam sem chave.
+Quando OpenAI é selecionado, a IA depende de `OPENAI_API_KEY` e acesso ao modelo em `OPENAI_MODEL`; essas chamadas são cobradas pelo provedor. A chave permanece no servidor e as chamadas usam `store: false`, timeout e erros sem segredos. Ollama local não exige chave nem créditos de API. O texto/foto alimentar não recebe o histórico médico. A pergunta ao assistente recebe somente o período e escopo escolhidos. Registro manual e importação de respostas funcionam sem chave.
 
 O cache evita repetir análises idênticas. O assistente serializa geração e limita chamadas por dia no fuso pessoal; isso não é uma cota global para todos os recursos de IA. Não há geração automática de resposta a cada registro.
 

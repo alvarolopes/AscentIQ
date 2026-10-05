@@ -1,0 +1,4 @@
+# Optional NVIDIA acceleration; omit this override on CPU-only machines.
+services:
+  ollama:
+    gpus: all

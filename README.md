@@ -18,7 +18,8 @@ Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preen
 
 ```powershell
 docker compose build api web
-docker compose up -d db
+docker compose --profile local-ai up -d db ollama
+docker compose --profile local-ai exec ollama ollama pull gemma3:4b
 docker compose --profile maintenance run --rm db-tools bootstrap
 docker compose --profile maintenance run --rm db-tools init-empty
 docker compose up -d api web
@@ -36,6 +37,7 @@ Para migrar uma base anterior, siga [DATABASE.md](docs/DATABASE.md): use a impor
 - [Contratos de importação](docs/IMPORTS.md)
 - [Requisitos e evidência de aceite](docs/ACCEPTANCE.md)
 - [Armazenamento e recuperação](docs/DATABASE.md)
+- [IA local sem cobrança de API, com Ollama](docs/OLLAMA.md)
 
 ```powershell
 docker compose --profile maintenance run --rm db-tools test
@@ -45,6 +47,6 @@ Esse comando cria um banco temporário, verifica a instalação vazia e executa 
 
 ## Limites explícitos
 
-O cálculo de gasto e a adaptação são estimativas e regras transparentes do produto. A IA não modifica refeições, metas ou planos sem revisão. Chamadas automáticas dependem de uma chave válida e do acesso ao modelo configurado; o registro manual permanece disponível. Integrações dependem do serviço de origem e das credenciais do usuário. Novos conectores móveis, voz e códigos de barras permanecem evoluções opcionais da SPEC.
+O cálculo de gasto e a adaptação são estimativas e regras transparentes do produto. A IA não modifica refeições, metas ou planos sem revisão. Ollama executa o modelo local sem cobrança por chamada; precisa do modelo baixado e de recursos do computador. OpenAI é opcional e exige chave/créditos da API. Não há fallback automático para API paga no modo local. Integrações dependem do serviço de origem e das credenciais do usuário. Novos conectores móveis, voz e códigos de barras permanecem evoluções opcionais da SPEC.
 
 Dados reais, documentos, fotos, relatórios e credenciais não fazem parte do código público. O servidor web escuta somente no endereço local por padrão.

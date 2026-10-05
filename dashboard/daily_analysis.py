@@ -70,11 +70,14 @@ def prepare(snapshot: dict, day: date) -> dict:
 
 
 def configuration() -> dict:
-    return {"configured": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
-            "model": os.environ.get("OPENAI_MODEL", "gpt-5")}
+    from dashboard.local_ai import configuration as provider_configuration
+    return provider_configuration()
 
 
 def ask_llm(prompt: str) -> str:
+    if configuration()['provider'] == 'ollama':
+        from dashboard.local_ai import request_text
+        return request_text(INSTRUCTIONS, prompt)
     if not configuration()["configured"]:
         raise ValueError("Configure OPENAI_API_KEY no servidor ou copie o prompt e importe a resposta.")
     payload = {"model": configuration()["model"], "instructions": INSTRUCTIONS,
@@ -115,10 +118,10 @@ class DailyReports:
         try:
             day = date.fromisoformat(prepared["date"])
             old = self.read(day)
-            if manual is None and old and old["fingerprint"] == prepared["fingerprint"] and old["source"] == "openai" and old["model"] == configuration()["model"]:
+            if manual is None and old and old["fingerprint"] == prepared["fingerprint"] and old["source"] == configuration()['provider'] and old["model"] == configuration()["model"]:
                 return old
             report = {**prepared, "text": manual if manual is not None else ask_llm(prepared["prompt"]),
-                      "source": "manual" if manual is not None else "openai",
+                      "source": "manual" if manual is not None else configuration()['provider'],
                       "model": "Resposta importada" if manual is not None else configuration()["model"],
                       "generated_at": datetime.now(timezone.utc).isoformat()}
             temporary = self.folder / (uuid.uuid4().hex + ".tmp")
