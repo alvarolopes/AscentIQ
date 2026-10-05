@@ -125,6 +125,80 @@ class PersonalApiTests(unittest.TestCase):
         self.assertEqual(len(reviewed['entries']), 1)
         self.assertNotIn('analysis_proposal', reviewed['entries'][0])
 
+    def test_save_automatically_estimates_and_retry_does_not_duplicate(self):
+        from dashboard.food_store import FoodDiary
+        store = FoodDiary(self.runtime, self.root)
+        payload = {'id': str(uuid.uuid4()), 'meal': 'Lanche', 'text': 'Banana de 100 g',
+                   'estimate_on_save': True, 'save_token': str(uuid.uuid4()), 'revision': 0}
+        analysis = {'items': [{'name': 'Banana 100 g', 'kcal': 89, 'protein_g': 1.1,
+                              'carbs_g': 23, 'fat_g': 0.3}], 'notes': 'Estimativa sintética.',
+                    'source': 'ollama', 'model': 'qwen3.5:4b'}
+        def inference(text, image):
+            staged = store.read(self.day)
+            self.assertEqual(len(staged['entries']), 1)
+            self.assertEqual(staged['pending_count'], 1)
+            return analysis
+        with patch('dashboard.server.estimate', side_effect=inference) as infer:
+            saved = self.post(f'/api/food/{self.day}/save', payload)
+            self.assertEqual(saved['analysis_status'], 'estimated')
+            self.assertEqual(saved['totals']['kcal'], 89)
+            self.assertEqual(saved['entries'][0]['source'], 'ai_estimated')
+            retry = self.post(f'/api/food/{self.day}/save', payload)
+            self.assertEqual(retry['revision'], saved['revision'])
+            self.assertEqual(infer.call_count, 1)
+        created = saved['entries'][0]['created_at']
+        updated_analysis = {**analysis, 'items': [{**analysis['items'][0], 'name': 'Banana 50 g', 'kcal': 44.5}]}
+        with patch('dashboard.server.estimate', return_value=updated_analysis) as infer:
+            edited = self.post(f'/api/food/{self.day}/save', {**payload, 'text': 'Banana de 50 g',
+                'save_token': str(uuid.uuid4()), 'revision': saved['revision'], 'analysis': analysis})
+            infer.assert_called_once_with('Banana de 50 g', None)
+        self.assertEqual(len(edited['entries']), 1)
+        self.assertEqual(edited['entries'][0]['created_at'], created)
+        self.assertEqual(edited['totals']['kcal'], 44.5)
+
+    def test_automatic_save_failure_preserves_pending_meal_and_allows_retry(self):
+        payload = {'id': str(uuid.uuid4()), 'meal': 'Lanche', 'text': 'Banana 100 g',
+                   'estimate_on_save': True, 'save_token': str(uuid.uuid4()), 'revision': 0}
+        with patch('dashboard.server.estimate', side_effect=RuntimeError('Ollama local não respondeu')):
+            failed = self.post(f'/api/food/{self.day}/save', payload)
+        self.assertEqual(failed['analysis_status'], 'pending')
+        self.assertEqual(failed['pending_count'], 1)
+        self.assertEqual(failed['unknown_nutrients']['kcal'], 1)
+        self.assertEqual(failed['entries'][0]['text'], payload['text'])
+        self.assertIsNone(failed['entries'][0]['analysis'])
+        analysis = {'items': [{'name': 'Banana 100 g', 'kcal': 89, 'protein_g': 1.1,
+                              'carbs_g': 23, 'fat_g': 0.3}], 'notes': '', 'source': 'ollama'}
+        with patch('dashboard.server.estimate', return_value=analysis):
+            saved = self.post(f'/api/food/{self.day}/save', {**payload, 'revision': failed['revision']})
+        self.assertEqual(len(saved['entries']), 1)
+        self.assertEqual(saved['pending_count'], 0)
+        self.assertEqual(saved['totals']['kcal'], 89)
+
+    def test_automatic_edit_uses_saved_photo_and_does_not_overwrite_concurrent_edit(self):
+        from dashboard.food_store import FoodDiary
+        image = 'data:image/png;base64,' + base64.b64encode(b'\x89PNG\r\n\x1a\n' + b'synthetic fixture').decode()
+        payload = {'id': str(uuid.uuid4()), 'meal': 'Lanche', 'text': 'Refeição sintética na foto', 'image': image}
+        original = self.post(f'/api/food/{self.day}/save', payload)
+        analysis = {'items': [{'name': 'Alimento sintético', 'kcal': 100, 'protein_g': 1,
+                              'carbs_g': 20, 'fat_g': 2}], 'notes': '', 'source': 'ollama'}
+        with patch('dashboard.server.estimate', return_value=analysis) as infer:
+            saved = self.post(f'/api/food/{self.day}/save', {**payload, 'image': None,
+                'estimate_on_save': True, 'revision': original['revision']})
+            infer.assert_called_once_with(payload['text'], image)
+        self.assertEqual(saved['entries'][0]['image_id'], original['entries'][0]['image_id'])
+        store = FoodDiary(self.runtime, self.root)
+        def concurrent_inference(text, photo):
+            current = store.read(self.day)
+            row = current['entries'][0]
+            store.change(self.day, entry={**row, 'text': 'Edição concorrente preservada'}, expected_revision=current['revision'])
+            return analysis
+        with patch('dashboard.server.estimate', side_effect=concurrent_inference):
+            self.post(f'/api/food/{self.day}/save', {**payload, 'image': None,
+                'estimate_on_save': True, 'revision': saved['revision']}, 409)
+        current = self.client.get(f'/api/food/{self.day}').json()
+        self.assertEqual(current['entries'][0]['text'], 'Edição concorrente preservada')
+        self.assertIsNone(current['entries'][0]['analysis'])
+
     def test_authentication_csrf_and_personal_validation(self):
         unauthenticated = TestClient(self.app)
         for path in ("/api/personal", "/api/export", "/api/assistant/context", "/api/documents", "/api/integrations"):

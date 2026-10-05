@@ -6,7 +6,7 @@ Uma plataforma individual para reunir treinos, alimentação, sono, medidas e ob
 
 - Painel do dia com alimentação registrada, gasto estimado, déficit utilizável, margem para a meta e limites de cobertura. Um diário vazio nunca prova jejum.
 - Garmin Connect e Hevy, sincronização incremental, sono preservado e consolidação de sessões de força. Importação manual e por CSV, FIT e GPX, com originais privados, repetição segura e reconciliação reversível.
-- Diário alimentar por texto ou foto, IA sob demanda, entrada manual, refeições pendentes, correções, favoritos e receitas por porções. Cobertura do dia e estimativas pendentes são informações independentes.
+- Diário alimentar por texto ou foto, estimativa automática da IA ao salvar, refeições pendentes em caso de falha, correções, favoritos e receitas por porções. Cobertura do dia e estimativas pendentes são informações independentes.
 - Perfil, preferências, medidas, check-ins e objetivos com prioridades. Planos datados e propostas de adaptação com evidência, revisão e aceite explícito.
 - Assistente com período e contexto visíveis, histórico de respostas e uso manual de outra IA. Referências médicas só entram mediante seleção explícita.
 - Documentos privados com extração e revisão, planejamento de refeições e treinos, gráficos e relatórios esportivos em HTML/PDF.
@@ -47,6 +47,6 @@ Esse comando cria um banco temporário, verifica a instalação vazia e executa 
 
 ## Limites explícitos
 
-O cálculo de gasto e a adaptação são estimativas e regras transparentes do produto. A IA não modifica refeições, metas ou planos sem revisão. Ollama executa o modelo local sem cobrança por chamada; precisa do modelo baixado e de recursos do computador. OpenAI é opcional e exige chave/créditos da API. Não há fallback automático para API paga no modo local. Integrações dependem do serviço de origem e das credenciais do usuário. Novos conectores móveis, voz e códigos de barras permanecem evoluções opcionais da SPEC.
+O cálculo de gasto e a adaptação são estimativas e regras transparentes do produto. Salvar uma refeição autoriza a estimativa automática da IA; metas e planos continuam exigindo revisão. Ollama executa o modelo local sem cobrança por chamada; precisa do modelo baixado e de recursos do computador. OpenAI é opcional e exige chave/créditos da API. Não há fallback automático para API paga no modo local. Integrações dependem do serviço de origem e das credenciais do usuário. Novos conectores móveis, voz e códigos de barras permanecem evoluções opcionais da SPEC.
 
 Dados reais, documentos, fotos, relatórios e credenciais não fazem parte do código público. O servidor web escuta somente no endereço local por padrão.
