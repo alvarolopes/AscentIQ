@@ -40,6 +40,7 @@ class LocalAiTests(unittest.TestCase):
                 self.assertEqual(value['items'][0]['kcal'],89)
                 body=json.loads(request.call_args.args[0].data)
                 self.assertIsInstance(body['format'],dict)
+                self.assertFalse(body['think'])
                 self.assertEqual(request.call_args.args[0].full_url,'http://ollama:11434/api/chat')
                 self.assertIsNone(request.call_args.args[0].get_header('Authorization'))
                 paid.assert_not_called()

@@ -11,7 +11,7 @@ def configuration():
     provider = os.environ.get('ASCENTIQ_AI_PROVIDER', 'openai').strip().lower()
     enabled = os.environ.get('ASCENTIQ_AI_ENABLED', 'true') == 'true'
     if provider == 'ollama':
-        model = os.environ.get('OLLAMA_MODEL', 'gemma3:4b').strip() or 'gemma3:4b'
+        model = os.environ.get('OLLAMA_MODEL', 'qwen3.5:4b').strip() or 'qwen3.5:4b'
         return {'provider': provider, 'model': model, 'configured': enabled and valid_model(model),
                 'local': True}
     return {'provider': provider, 'model': os.environ.get('OPENAI_MODEL', 'gpt-5'),
@@ -60,7 +60,7 @@ def request_text(instructions, content, *, json_output=False, schema=None):
     if config['provider'] != 'ollama' or not config['configured']:
         raise ValueError('O modelo local não está configurado.')
     payload = {'model': config['model'], 'messages': messages(instructions, content),
-               'stream': False, 'keep_alive': '5m',
+               'stream': False, 'think': False, 'keep_alive': '5m',
                'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': 2000}}
     if schema or json_output:
         payload['format'] = schema or 'json'

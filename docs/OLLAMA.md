@@ -8,24 +8,24 @@ Com Docker em execução, inicie o serviço e baixe o modelo multimodal:
 
 ```powershell
 docker compose --profile local-ai up -d ollama
-docker compose --profile local-ai exec ollama ollama pull gemma3:4b
+docker compose --profile local-ai exec ollama ollama pull qwen3.5:4b
 ```
 
 Para NVIDIA, use o arquivo adicional desde a inicialização:
 
 ```powershell
 docker compose -f compose.yaml -f compose.ollama-gpu.yaml --profile local-ai up -d ollama
-docker compose -f compose.yaml -f compose.ollama-gpu.yaml --profile local-ai exec ollama ollama pull gemma3:4b
+docker compose -f compose.yaml -f compose.ollama-gpu.yaml --profile local-ai exec ollama ollama pull qwen3.5:4b
 docker compose --profile local-ai exec ollama ollama ps
 ```
 
-O Compose mantém os modelos no volume `ollama_models`. Não remova os volumes ao atualizar. O serviço não publica portas no host; somente a API da aplicação o acessa pela rede Docker. O container usa `OLLAMA_NO_CLOUD=1`, e a aplicação rejeita modelos identificados como cloud e URLs de provedores externos nesse modo. A documentação oficial descreve [Docker](https://docs.ollama.com/docker), [execução local e nuvem desativada](https://docs.ollama.com/faq) e [o modelo Gemma 3 4B](https://ollama.com/library/gemma3:4b).
+O Compose mantém os modelos no volume `ollama_models`. Não remova os volumes ao atualizar. O serviço não publica portas no host; somente a API da aplicação o acessa pela rede Docker. O container usa `OLLAMA_NO_CLOUD=1`, e a aplicação rejeita modelos identificados como cloud e URLs de provedores externos nesse modo. A documentação oficial descreve [Docker](https://docs.ollama.com/docker), [execução local e nuvem desativada](https://docs.ollama.com/faq) e [o modelo Qwen 3.5 4B](https://ollama.com/library/qwen3.5:4b).
 
 ## Configurar e usar
 
-No painel, abra Dados e fontes → Inteligência artificial → Configurar/Alterar conexão. Selecione **Ollama local**, informe `gemma3:4b` como modelo e salve. Não é necessário preencher uma chave. O provedor selecionado vale para alimentação, assistente e extração documental com IA; não existe fallback automático para OpenAI quando o Ollama falha.
+No painel, abra Dados e fontes → Inteligência artificial → Configurar/Alterar conexão. Selecione **Ollama local**, informe `qwen3.5:4b` como modelo e salve. Não é necessário preencher uma chave. O provedor selecionado vale para alimentação, assistente e extração documental com IA; não existe fallback automático para OpenAI quando o Ollama falha.
 
-Também há suporte às variáveis `ASCENTIQ_AI_PROVIDER=ollama`, `OLLAMA_MODEL=gemma3:4b` e `OLLAMA_BASE_URL=http://ollama:11434`. A configuração salva no painel tem prioridade ao iniciar a API. Uma chave OpenAI previamente guardada permanece cifrada, mas não é usada pelo modo local.
+Também há suporte às variáveis `ASCENTIQ_AI_PROVIDER=ollama`, `OLLAMA_MODEL=qwen3.5:4b` e `OLLAMA_BASE_URL=http://ollama:11434`. A configuração salva no painel tem prioridade ao iniciar a API. Uma chave OpenAI previamente guardada permanece cifrada, mas não é usada pelo modo local.
 
 Na alimentação, descreva quantidades/preparo ou anexe uma foto e autorize sua análise. Clique em Analisar com IA, revise os itens/hipóteses e salve. Uma refeição já pendente exige Editar → Analisar com IA → revisar → Salvar correção; configurar o provedor não modifica os registros antigos.
 
