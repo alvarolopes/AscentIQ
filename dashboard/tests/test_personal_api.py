@@ -83,6 +83,27 @@ class PersonalApiTests(unittest.TestCase):
                       "date": (self.day - timedelta(days=offset)).isoformat(), "weight_kg": 80}})
         return self.post("/api/personal/review", {"day": self.day.isoformat()})
 
+    def test_local_ai_status_and_reviewed_food_without_paid_calls(self):
+        self.assertEqual(self.client.get('/api/ai/configuration').status_code, 200)
+        self.post('/api/integrations/ai', {'credentials': {'provider': 'ollama', 'local_model': 'gemma3:4b'}})
+        self.assertTrue(self.client.get(f'/api/food/{self.day}').json()['configured'])
+        pending={'id':str(uuid.uuid4()),'meal':'Lanche','text':'Uma banana de 100 g','analysis':None}
+        saved=self.post(f'/api/food/{self.day}/save',pending)
+        with patch('dashboard.local_ai.request_text',side_effect=RuntimeError('Ollama local não respondeu')):
+            self.post(f'/api/food/{self.day}/analyze',pending,503)
+        unchanged=self.client.get(f'/api/food/{self.day}').json()
+        self.assertEqual(unchanged['revision'],saved['revision'])
+        self.assertEqual(unchanged['pending_count'],1)
+        response={'items':[{'name':'Banana 100 g','kcal':89,'protein_g':1.1,'carbs_g':23,'fat_g':0.3}],'notes':'Estimativa sintética.'}
+        with patch('dashboard.local_ai.request_text',return_value=json.dumps(response)), patch('dashboard.nutrition.urlopen') as paid:
+            analysis=self.post(f'/api/food/{self.day}/analyze',pending)
+            self.assertEqual(analysis['source'],'ollama')
+            paid.assert_not_called()
+        self.assertEqual(self.client.get(f'/api/food/{self.day}').json()['pending_count'],1)
+        reviewed=self.post(f'/api/food/{self.day}/save',{**pending,'analysis':analysis,'revision':saved['revision']})
+        self.assertEqual(len(reviewed['entries']),1)
+        self.assertEqual(reviewed['pending_count'],0)
+
     def test_authentication_csrf_and_personal_validation(self):
         unauthenticated = TestClient(self.app)
         for path in ("/api/personal", "/api/export", "/api/assistant/context", "/api/documents", "/api/integrations"):

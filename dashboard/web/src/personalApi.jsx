@@ -6,6 +6,11 @@ export const dayLabel = value => value ? new Date(value.slice(0,10)+'T12:00:00')
 export const optionalNumber = value => value === '' || value == null ? null : Number(value);
 export const array = value => Array.isArray(value) ? value : [];
 
+export function notifyIntegrationChange() {
+  window.dispatchEvent(new Event('ascentiq-integrations-changed'));
+  try {localStorage.setItem('ascentiq-integrations-updated',String(Date.now()));} catch {}
+}
+
 export async function personalApi(path, body) {
   const response = await fetch('/api/'+path, {credentials:'same-origin',cache:'no-store',...(body !== undefined ? {method:'POST',headers:{'Content-Type':'application/json','X-AscentIQ-Request':'1'},body:JSON.stringify(body)} : {})});
   const payload = await response.json().catch(()=>({}));
