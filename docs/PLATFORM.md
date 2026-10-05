@@ -6,7 +6,7 @@ Referência de produto: [SPEC_PLATAFORMA_SAUDE_FITNESS.md](../SPEC_PLATAFORMA_SA
 
 1. Registrar perfil, preferências e objetivos; conectar uma fonte ou importar atividades.
 2. Guardar observações, reconhecer lacunas e revisar possíveis duplicatas.
-3. Registrar alimentação manualmente, por descrição ou por foto; revisar a estimativa antes de incluí-la no total.
+3. Registrar alimentação por descrição ou foto; salvar calcula e registra automaticamente a estimativa de calorias e nutrientes.
 4. Declarar a cobertura alimentar; calcular gasto e balanço apenas com entradas utilizáveis.
 5. Acompanhar medidas, treino, sono e check-ins; solicitar revisão do objetivo.
 6. Avaliar a proposta, aceitar/rejeitar e acompanhar a versão vigente do plano.
@@ -46,7 +46,7 @@ Originais de atividades ficam em `runtime/personal-imports`; documentos em `runt
 
 ## Alimentação e cobertura
 
-O fluxo aceita um registro pendente sem IA ou sem números conhecidos. Uma proposta não confirmada não altera os totais oficiais. Quando o usuário salva itens revisados, eles entram no total registrado. A edição conserva o identificador da refeição, histórico e controle de revisão; repetir uma operação já aplicada não cria outra refeição.
+Salvar uma refeição na interface grava a descrição e a foto antes da inferência. A IA calcula e registra os nutrientes automaticamente, sem etapa separada de análise ou confirmação. A origem fica identificada como estimativa da IA. Se a IA não estiver configurada ou falhar, a refeição continua salva com calorias pendentes. Editar e salvar recalcula a partir da descrição e reutiliza a foto registrada. A edição conserva o identificador da refeição, histórico e controle de revisão; repetir um salvamento já concluído com o mesmo token não cria outra refeição nem outra chamada. O modo anterior da API permanece disponível para compatibilidade com importação de registros estruturados.
 
 Cobertura alimentar e cobertura numérica são independentes:
 

@@ -320,6 +320,19 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     app.state.food_image = save_food_image
 
+    def food_image_content(identifier):
+        if (not isinstance(identifier, str) or len(identifier) not in (68, 69)
+                or any(x not in '0123456789abcdef' for x in identifier[:64])
+                or identifier[64:] not in ('.jpg', '.png', '.webp')):
+            raise ValueError('A foto salva não está disponível para estimativa.')
+        path = images / identifier
+        if not path.is_file() or not 20 <= path.stat().st_size <= 6 * 1024 * 1024:
+            raise ValueError('A foto salva não está disponível para estimativa.')
+        mime = {'.jpg': 'jpeg', '.png': 'png', '.webp': 'webp'}[path.suffix]
+        return 'data:image/' + mime + ';base64,' + base64.b64encode(path.read_bytes()).decode()
+
+    app.state.food_image_content = food_image_content
+
     @app.get('/api/food-images/{identifier}')
     def food_image(identifier: str):
         if len(identifier) not in (68, 69) or any(x not in '0123456789abcdef' for x in identifier[:64]) or identifier[64:] not in ('.jpg', '.png', '.webp'):

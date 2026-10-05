@@ -48,6 +48,8 @@ class FoodRequest(BaseModel):
     id: uuid.UUID | None = None
     revision: int | None = Field(default=None, ge=0)
     image: str | None = Field(default=None, max_length=9000000)
+    estimate_on_save: bool = False
+    save_token: uuid.UUID | None = None
 
 class FoodRemove(BaseModel):
     id: uuid.UUID
@@ -222,17 +224,40 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     @app.post('/api/food/{day}/save')
     def save_food(day: date, payload: FoodRequest):
         try:
-            analysis = validate(payload.analysis, allow_unknown=True) if payload.analysis is not None else None
+            analysis = (validate(payload.analysis, allow_unknown=True)
+                        if payload.analysis is not None and not payload.estimate_on_save else None)
+            current = food_diary.read(day)
+            identifier = str(payload.id or uuid.uuid4())
+            previous = next((x for x in current['entries'] if x['id'] == identifier), None)
             image_id = None
             if payload.image:
                 image_id = app.state.food_image(payload.image)
-            elif payload.id:
-                previous = next((x for x in food_diary.read(day)['entries'] if x['id'] == str(payload.id)), None)
+            elif previous:
                 image_id = previous.get('image_id') if previous else None
-            return food_diary.change(day, entry={'id': str(payload.id or uuid.uuid4()),
+            token = str(payload.save_token) if payload.save_token else None
+            if (payload.estimate_on_save and token and previous and previous.get('save_token') == token
+                    and previous.get('text') == payload.text and previous.get('meal') == payload.meal
+                    and previous.get('image_id') == image_id and previous.get('source') == 'ai_estimated'
+                    and previous.get('analysis')):
+                return {**current, 'analysis_status': 'estimated'}
+            entry = {'id': identifier,
                 'meal': payload.meal, 'text': payload.text, 'analysis': analysis,
-                'image_id': image_id, 'created_at': datetime.now(timezone.utc).isoformat(), 'source': 'reviewed' if analysis else 'pending'},
+                'image_id': image_id, 'created_at': datetime.now(timezone.utc).isoformat(),
+                'source': 'reviewed' if analysis else 'pending',
+                **({'save_token': token} if payload.estimate_on_save else {})}
+            saved = food_diary.change(day, entry=entry,
                 expected_revision=payload.revision)
+            if not payload.estimate_on_save:
+                return saved
+            # Persist first: an unavailable model must never lose the meal.
+            try:
+                image = app.state.food_image_content(image_id) if image_id else None
+                analysis = estimate(payload.text, image)
+            except (ValueError, RuntimeError) as error:
+                return {**saved, 'analysis_status': 'pending', 'analysis_error': str(error)}
+            completed = food_diary.change(day, entry={**entry, 'analysis': analysis, 'source': 'ai_estimated'},
+                                          expected_revision=saved['revision'])
+            return {**completed, 'analysis_status': 'estimated'}
         except ValueError as error:
             raise HTTPException(409 if 'mudou' in str(error) else 400, str(error)) from error
 

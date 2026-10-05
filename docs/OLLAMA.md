@@ -27,7 +27,7 @@ No painel, abra Dados e fontes → Inteligência artificial → Configurar/Alter
 
 Também há suporte às variáveis `ASCENTIQ_AI_PROVIDER=ollama`, `OLLAMA_MODEL=qwen3.5:4b` e `OLLAMA_BASE_URL=http://ollama:11434`. A configuração salva no painel tem prioridade ao iniciar a API. Uma chave OpenAI previamente guardada permanece cifrada, mas não é usada pelo modo local.
 
-Na alimentação, descreva quantidades/preparo ou anexe uma foto e autorize sua análise. Clique em Analisar com IA, revise os itens/hipóteses e salve. Uma refeição já pendente exige Editar → Analisar com IA → revisar → Salvar correção; configurar o provedor não modifica os registros antigos.
+Na alimentação, descreva quantidades/preparo ou anexe uma foto e clique em Salvar refeição. A refeição fica gravada primeiro; a IA calcula e salva os nutrientes automaticamente, atualizando os totais. Não há botão separado de análise, entrada manual de calorias nem confirmação adicional da estimativa. Para corrigir ou tentar novamente uma estimativa pendente, edite a descrição e salve; a foto já registrada é reutilizada. Os itens, as hipóteses, a origem e o modelo ficam disponíveis para consulta.
 
 O status da alimentação é atualizado quando a aba volta ao foco ou a conexão muda em outra aba, sem apagar o rascunho. Falhas preservam os dados e não contam calorias desconhecidas como zero. O primeiro pedido pode levar mais tempo por carregar o modelo; os pedidos seguintes mantêm-no aquecido por cinco minutos. O prazo da API local é de 180 segundos, com proxy de 210 segundos.
 
@@ -40,4 +40,4 @@ docker compose --profile local-ai logs --tail 30 ollama
 docker compose --profile maintenance run --rm db-tools test
 ```
 
-`ollama list` confirma o download. `ollama ps` confirma CPU/GPU durante uma inferência. As análises registram `source=ollama` e o modelo. Os testes usam dados sintéticos e verificam seleção sem chave, persistência, fotos, contrato JSON, falhas sem fallback pago e revisão alimentar antes de alterar os totais. Não publicar prompts, documentos nem logs pessoais.
+`ollama list` confirma o download. `ollama ps` confirma CPU/GPU durante uma inferência. As análises registram `source=ollama` e o modelo. Os testes usam dados sintéticos e verificam seleção sem chave, persistência, fotos, contrato JSON, falhas sem fallback pago, estimativa automática ao salvar, tentativas repetidas sem duplicação e preservação de edições concorrentes. Não publicar prompts, documentos nem logs pessoais.
