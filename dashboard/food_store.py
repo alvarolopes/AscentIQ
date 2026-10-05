@@ -76,6 +76,18 @@ class FoodDiary:
         with self._db() as conn:
             return self._view(day, self._load(conn, day))
 
+    def propose(self, day, identifier, analysis, *, expected_revision):
+        """Persist an estimate for review without changing recorded nutrients."""
+        from dashboard.nutrition import validate
+        current = self.read(day)
+        entry = next((row for row in current['entries'] if row['id'] == identifier), None)
+        if entry is None:
+            raise ValueError('Refeição não encontrada.')
+        if entry.get('analysis') and all(item.get('kcal') is not None for item in entry['analysis']['items']):
+            raise ValueError('A refeição já possui valores registrados.')
+        return self.change(day, entry={**entry, 'analysis_proposal': validate(analysis)},
+                           expected_revision=expected_revision)
+
     def change(self, day, entry=None, remove=None, *, expected_revision=None,
                completeness=None, fasting_declared=False, restore_revision=None):
         if not isinstance(fasting_declared, bool):
