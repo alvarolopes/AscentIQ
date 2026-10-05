@@ -104,6 +104,27 @@ class PersonalApiTests(unittest.TestCase):
         self.assertEqual(len(reviewed['entries']),1)
         self.assertEqual(reviewed['pending_count'],0)
 
+    def test_saved_pending_estimate_persists_until_review_without_changing_totals(self):
+        from dashboard.food_store import FoodDiary
+        pending = {'id': str(uuid.uuid4()), 'meal': 'Lanche', 'text': 'Banana de 100 g', 'analysis': None}
+        saved = self.post(f'/api/food/{self.day}/save', pending)
+        proposal = {'items': [{'name': 'Banana 100 g', 'kcal': 89, 'protein_g': 1.1,
+                               'carbs_g': 23, 'fat_g': 0.3}], 'notes': 'Estimativa sintética.',
+                    'source': 'ollama', 'model': 'qwen3.5:4b'}
+        store = FoodDiary(self.runtime, self.root)
+        staged = store.propose(self.day, pending['id'], proposal, expected_revision=saved['revision'])
+        self.assertEqual(staged['totals'], saved['totals'])
+        self.assertEqual(staged['pending_count'], 1)
+        self.assertEqual(staged['entries'][0]['created_at'], saved['entries'][0]['created_at'])
+        self.assertEqual(self.client.get(f'/api/food/{self.day}').json()['entries'][0]['analysis_proposal'], proposal)
+        with self.assertRaisesRegex(ValueError, 'mudou'):
+            store.propose(self.day, pending['id'], {**proposal, 'notes': 'Alterada'}, expected_revision=saved['revision'])
+        reviewed = self.post(f'/api/food/{self.day}/save', {**pending, 'analysis': proposal, 'revision': staged['revision']})
+        self.assertEqual(reviewed['totals']['kcal'], 89)
+        self.assertEqual(reviewed['pending_count'], 0)
+        self.assertEqual(len(reviewed['entries']), 1)
+        self.assertNotIn('analysis_proposal', reviewed['entries'][0])
+
     def test_authentication_csrf_and_personal_validation(self):
         unauthenticated = TestClient(self.app)
         for path in ("/api/personal", "/api/export", "/api/assistant/context", "/api/documents", "/api/integrations"):
