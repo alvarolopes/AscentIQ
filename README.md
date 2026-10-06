@@ -9,6 +9,7 @@ Uma plataforma individual para reunir treinos, alimentação, sono, medidas e ob
 - Diário alimentar por texto ou foto, estimativa automática da IA ao salvar, refeições pendentes em caso de falha, correções, favoritos e receitas por porções. Cobertura do dia e estimativas pendentes são informações independentes.
 - Perfil, preferências, medidas, check-ins e objetivos com prioridades. Metas alimentares diárias com IA local, planos datados e propostas de adaptação com evidência, revisão e aceite explícito.
 - Consumo/meta de calorias e nutrientes na alimentação, com saldo restante. Peso, objetivo e treinos orientam a atualização automática, que pode ser pausada.
+- Botão de análise do dia em Hoje e Alimentação: considera horário, registros, recuperação e relato pessoal; explica possíveis desequilíbrios e próximos passos com histórico e prompt consultável.
 - Assistente com período e contexto visíveis, histórico de respostas e uso manual de outra IA. Referências médicas só entram mediante seleção explícita.
 - Documentos privados com extração e revisão, planejamento de refeições e treinos, gráficos e relatórios esportivos em HTML/PDF.
 - PostgreSQL, autenticação local, credenciais de fontes criptografadas, exportação JSON/ZIP e backup criptografado com teste de restauração separado.
@@ -40,6 +41,7 @@ Para migrar uma base anterior, siga [DATABASE.md](docs/DATABASE.md): use a impor
 - [Armazenamento e recuperação](docs/DATABASE.md)
 - [IA local sem cobrança de API, com Ollama](docs/OLLAMA.md)
 - [Metas alimentares automáticas e parâmetros](docs/NUTRITION_TARGETS.md)
+- [Análise do dia com alimentação, treino e horário](docs/DAY_REVIEW.md)
 
 ```powershell
 docker compose --profile maintenance run --rm db-tools test

@@ -26,6 +26,7 @@ As áreas da interface agrupam o dia, energia, alimentação, corpo/check-in, ob
 | `dashboard/food_store.py` | Diário revisável, calorias pendentes, cobertura e histórico de alterações |
 | `dashboard/nutrition.py` | Validação das estimativas alimentares e chamada opcional da IA |
 | `dashboard/nutrition_targets.py` | Metas alimentares diárias com Ollama, contexto datado, limites e versões do plano |
+| `dashboard/day_review.py` | Análise do dia com horário, refeições, treino e recuperação, com incertezas explícitas |
 | `dashboard/assistant.py` | Contexto limitado ao período, análise/importação de resposta e proveniência |
 | `dashboard/artifacts.py` | Documentos, observações revisadas, receitas/favoritos, planejamento e análises |
 | `dashboard/provider_settings.py` | Configuração privada e credenciais cifradas, sem retorná-las nas respostas |
@@ -125,6 +126,8 @@ A opção de metas alimentares automáticas publica diariamente calorias e prote
 O fluxo separado de propostas continua exigindo decisão do usuário. A proposta guarda evidências, método, versão anterior, sugestão, motivo e próxima revisão. Seu fingerprint é revalidado no aceite; alterações relevantes invalidam a proposta. Uma decisão tardia tem vigência posterior à data real de aceite, sem reescrever metas passadas. Pause as metas automáticas para manter uma referência manual ou profissional sem substituição pela IA.
 
 ## IA e escopo autorizado
+
+Hoje e Alimentação oferecem **Analisar meu dia**: monta o prompt com horário local, meta, cobertura alimentar/energética, treino, recuperação, planejamento e relato opcional. Salva a resposta no histórico do assistente sem alterar metas ou registros. A diferença para a meta não é apresentada como déficit comprovado. O contexto e o prompt continuam consultáveis; falhas preservam respostas anteriores. Método e limites: [DAY_REVIEW.md](DAY_REVIEW.md).
 
 A estimativa alimentar envia o conteúdo da refeição e eventual imagem selecionada. O assistente prepara contexto do período selecionado: perfil, objetivos, planos, alimentação, energia, atividades, sono, corpo e check-ins. Documentos/exames só entram mediante opção explícita; geometria GPX não é anexada por causa de uma refeição ou pergunta geral.
 

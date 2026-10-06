@@ -25,10 +25,10 @@ Proponha ajustes proporcionais à evidência e explique o que falta quando neces
 Uma resposta não modifica automaticamente perfil, dados ou plano. Até 900 palavras.'''
 
 
-def request_text(instructions, content, *, json_output=False):
-    if configuration()['provider'] == 'ollama':
+def request_text(instructions, content, *, json_output=False, schema=None, max_tokens=2000, local_only=False):
+    if local_only or configuration()['provider'] == 'ollama':
         from dashboard.local_ai import request_text as local_request
-        return local_request(instructions, content, json_output=json_output)
+        return local_request(instructions, content, json_output=json_output, schema=schema, max_tokens=max_tokens)
     if not configuration()['configured']:
         raise ValueError('A IA não está configurada. Use o contexto preparado em outra IA e importe a resposta.')
     payload = {'model': configuration()['model'], 'instructions': instructions,
@@ -98,10 +98,11 @@ def answer(artifacts, prepared, question, day, *, manual_response=None, daily_li
 
 
 def _answer(artifacts, prepared, question, day, *, manual_response=None, daily_limit=20):
-    fingerprint = hashlib.sha256((prepared['fingerprint'] + question + configuration()['model']).encode()).hexdigest()
+    config = configuration()
+    fingerprint = hashlib.sha256((prepared['fingerprint'] + question + config['model']).encode()).hexdigest()
     history = artifacts.read('assistant')
     cached = next((x for x in reversed(history) if x.get('fingerprint') == fingerprint and
-                   x.get('source') == configuration()['provider']), None)
+                   x.get('source') == config['provider']), None)
     if cached and manual_response is None:
         return {**cached, 'cached': True}
     try:
@@ -115,14 +116,22 @@ def _answer(artifacts, prepared, question, day, *, manual_response=None, daily_l
             return stamp.replace(tzinfo=timezone.utc).astimezone(zone).date() if stamp.tzinfo is None else stamp.astimezone(zone).date()
         except (ValueError, TypeError):
             return None
-    calls_today = sum(1 for x in history if x.get('source') == configuration()['provider'] and local_day(x) == current_day)
+    calls_today = sum(1 for x in history if x.get('source') == config['provider'] and local_day(x) == current_day)
     if manual_response is None and calls_today >= daily_limit:
         raise ValueError('Limite diário de análises atingido. Você pode importar uma resposta ou alterar o limite nas preferências.')
     prompt = prepared['prompt'] + '\nPERGUNTA DO USUÁRIO:\n' + question
-    text = manual_response if manual_response is not None else request_text(INSTRUCTIONS, prompt)
+    if manual_response is None and prepared.get('analysis_type') == 'day_review':
+        from dashboard.day_review import SCHEMA, render_response
+        content = prompt.removeprefix(prepared['instructions'] + '\n')
+        text = render_response(prepared['context'], request_text(prepared['instructions'], content,
+                               json_output=True, schema=SCHEMA, max_tokens=3000, local_only=True))
+    else:
+        text = manual_response if manual_response is not None else request_text(prepared.get('instructions', INSTRUCTIONS), prompt)
     return artifacts.save('assistant', {'date': day.isoformat(), 'question': question, 'text': text,
         'context': prepared['context'], 'scope': prepared['scope'], 'prompt': prompt,
         'context_fingerprint': prepared['fingerprint'], 'fingerprint': fingerprint,
-        'source': 'imported' if manual_response is not None else configuration()['provider'],
-        'model': 'Resposta importada' if manual_response is not None else configuration()['model'],
+        'source': 'imported' if manual_response is not None else config['provider'],
+        'model': 'Resposta importada' if manual_response is not None else config['model'],
+        'analysis_type': prepared.get('analysis_type', 'conversation'),
+        'data_fingerprint': prepared.get('data_fingerprint'),
         'created_at': datetime.now(timezone.utc).isoformat()})

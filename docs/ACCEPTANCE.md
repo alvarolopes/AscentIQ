@@ -4,6 +4,8 @@ Referência: [SPEC_PLATAFORMA_SAUDE_FITNESS.md](../SPEC_PLATAFORMA_SAUDE_FITNESS
 
 ## Resultado de execução conhecido
 
+Atualização de 05/10/2026: o botão de análise do dia em Hoje e Alimentação tem cobertura em `test_day_review.py` e `test_personal_api.py` para horário, diário parcial/desconhecido, planejamento, consolidação, privacidade, cache, concorrência de leituras, falhas e bloqueio de API paga. A análise mantém planos/registros e torna o prompt consultável. As heurísticas não são critérios clínicos; veja [DAY_REVIEW.md](DAY_REVIEW.md).
+
 Atualização de 05/10/2026: metas diárias com Ollama, histórico, pausa, concorrência e indicadores de consumo/meta têm cobertura em `test_nutrition_targets.py` e `test_personal_api.py`. A inferência real e a apresentação na alimentação foram conferidas em um container descartável com perfil, treinos e refeição fictícios. O serviço preserva a última meta em falhas e identifica dados insuficientes. Método e limites: [NUTRITION_TARGETS.md](NUTRITION_TARGETS.md). As evidências anteriores abaixo conservam suas datas e escopos.
 
 Evidências disponíveis em 03/10/2026, com fontes sintéticas para as suítes:

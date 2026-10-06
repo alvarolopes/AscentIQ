@@ -55,13 +55,13 @@ def messages(instructions, content):
     return result
 
 
-def request_text(instructions, content, *, json_output=False, schema=None):
+def request_text(instructions, content, *, json_output=False, schema=None, max_tokens=2000):
     config = configuration()
     if config['provider'] != 'ollama' or not config['configured']:
         raise ValueError('O modelo local não está configurado.')
     payload = {'model': config['model'], 'messages': messages(instructions, content),
                'stream': False, 'think': False, 'keep_alive': '5m',
-               'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': 2000}}
+               'options': {'temperature': 0, 'num_ctx': 8192, 'num_predict': max_tokens}}
     if schema or json_output:
         payload['format'] = schema or 'json'
     request = Request(base_url() + '/api/chat', data=json.dumps(payload).encode(),
