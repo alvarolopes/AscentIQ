@@ -96,7 +96,7 @@ def context_for(health, snapshot, day):
         return {key: row[key] for key in ('id', 'type', 'description', 'priority', 'due_date',
                                          'target_value', 'desired_weekly_change_kg', 'preserve') if key in row}
 
-    context = {'method': METHOD, 'prompt_revision': 2, 'date': day.isoformat(), 'profile': {k: profile.get(k) for k in
+    context = {'method': METHOD, 'prompt_revision': 3, 'date': day.isoformat(), 'profile': {k: profile.get(k) for k in
                ('age', 'birth_date', 'sex', 'height_cm', 'weight_kg', 'weight_reference_date')},
                'goal': goal_context(goal) if goal else None,
                'active_goals': [goal_context(g) for g in _goals_for_day(state, day) if g.get('status') == 'active'],
@@ -201,7 +201,17 @@ class NutritionTargets:
             if (day != _today(fresh['preferences']) or fresh_fingerprint != fingerprint or not fresh['preferences'].get('auto_nutrition_targets', True)
                     or (fresh_plan or {}).get('id') != (current or {}).get('id')):
                 raise ValueError('Os dados mudaram durante o cálculo. A meta será atualizada novamente.')
-            limitations = result['limitations'] + reference['assumptions']
+            # Missing data are verified here; model prose is not evidence that exams,
+            # symptoms or measurements are absent from the person's actual life.
+            limitations = list(reference['assumptions']) + [
+                'A adequação da meta não foi validada por ingestão registrada e tendência de peso.',
+                'Carboidratos completam a energia após proteína e gordura; não representam uma necessidade medida.']
+            if not context['recovery_checkins']:
+                limitations.append('Não há check-ins de recuperação registrados nos últimos três dias.')
+            if len(context['weight_history_30_days']) < 4:
+                limitations.append('Há menos de quatro medidas de peso nos últimos 30 dias; a tendência é insuficiente para calibrar o gasto.')
+            if not any(g.get('due_date') for g in context['active_goals']):
+                limitations.append('Não há prazo explícito nos objetivos ativos para confirmar proximidade de evento.')
             if context['activity_reference']['factor_inferred']:
                 limitations.append('Fator de atividade estimado pelo volume dos últimos sete dias; rotina fora dos treinos não foi medida.')
             weight_date = context['profile'].get('weight_reference_date')

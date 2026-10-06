@@ -54,6 +54,8 @@ class NutritionTargetTests(unittest.TestCase):
             self.assertNotIn('medical', context)
             self.assertNotIn('gpx', context)
             self.assertNotIn('food', context)
+            self.assertNotIn('Referência estimada.', first['limitations'])
+            self.assertTrue(any('tendência' in text for text in first['limitations']))
             self.targets.refresh(self.day)
             self.assertEqual(infer.call_count, 1)
         plan = _active_plan(self.health.read(), self.day)
