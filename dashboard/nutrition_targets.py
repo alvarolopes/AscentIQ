@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import threading
 import time
 import uuid
@@ -178,9 +179,6 @@ class NutritionTargets:
                     raise ValueError('A IA sugeriu valores fora dos limites; a última meta foi preservada.')
             if not isinstance(result.get('reason'), str) or not 1 <= len(result['reason']) <= 3000:
                 raise ValueError('A IA não explicou a meta; a última meta foi preservada.')
-            if any(claim in result['reason'].lower() for claim in
-                   ('maximiz', 'estabilidade hormonal', 'estresse metabólico')):
-                raise ValueError('A IA apresentou efeitos não verificados; a última meta foi preservada.')
             if not isinstance(result.get('limitations'), list) or len(result['limitations']) > 20 or any(not isinstance(x, str) or len(x) > 500 for x in result['limitations']):
                 raise ValueError('A IA retornou limitações inválidas; a última meta foi preservada.')
             reference = context['energy_reference']
@@ -196,6 +194,13 @@ class NutritionTargets:
             carbs = round((kcal - protein * 4 - fat * 9) / 4, 1)
             if not 1000 <= kcal <= 10000 or carbs < 0:
                 raise ValueError('Meta incompatível com o perfil; a última meta foi preservada.')
+            explanation = ' '.join(sentence for sentence in re.split(r'(?<=[.!?])\s+', result['reason'])
+                                   if not any(claim in sentence.lower() for claim in
+                                              ('maximiz', 'estabilidade hormonal', 'estresse metabólico')))
+            reason = (f'Referência de gasto estimada ou declarada: {reference["total_kcal"]:.0f} kcal/dia. '
+                      f'Meta: {kcal} kcal/dia (ajuste de {(kcal / reference["total_kcal"] - 1) * 100:+.1f}% sobre a referência). '
+                      f'Proteína: {protein_ratio:g} g/kg; gordura: {fat_fraction * 100:g}% da energia; '
+                      'carboidratos completam o restante. ' + explanation)
             fresh, _, fresh_fingerprint, _ = context_for(self.health, self.snapshot(), day)
             fresh_plan = _active_plan(fresh, day)
             if (day != _today(fresh['preferences']) or fresh_fingerprint != fingerprint or not fresh['preferences'].get('auto_nutrition_targets', True)
@@ -220,7 +225,7 @@ class NutritionTargets:
             plan = {'id': uuid.uuid4().hex, 'goal_id': context['goal']['id'], 'target_kcal': kcal,
                     'protein_g': protein, 'carbs_g': carbs, 'fat_g': fat, 'source': 'ollama', 'model': config['model'],
                     'method': METHOD, 'effective_from': day.isoformat(),
-                    'next_review_date': (day + timedelta(days=1)).isoformat(), 'reason': result['reason'],
+                    'next_review_date': (day + timedelta(days=1)).isoformat(), 'reason': reason,
                     'limitations': limitations, 'baseline_expenditure_kcal': reference['total_kcal'],
                     'nutrition_fingerprint': fingerprint, 'nutrition_context': context, 'created_at': _stamp()}
             self.health.save('plans', plan, fresh['revision'])
