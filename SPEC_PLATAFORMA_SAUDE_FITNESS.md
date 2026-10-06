@@ -458,6 +458,8 @@ Propostas pendentes também dependem de versões. Antes do aceite, verificar se 
 
 **RF-23 — IA como apoio contextual.** Usar IA para estimar refeições, resumir períodos, comparar o histórico, explicar métricas e propor ajustes. Cálculos contábeis e totais devem ser feitos de forma reproduzível pelo sistema; uma resposta em texto não é a base oficial de um número.
 
+Oferecer um botão de análise do dia que reúna horário local, refeições/nutrientes, meta e gasto com suas coberturas, treino realizado/planejado, sono, recuperação e relato pessoal. Explicar possíveis sinais de energia insuficiente, registros faltantes e opções para agora e para os próximos treinos. Diferença para a meta não é déficit comprovado; não obrigar a completar um saldo à noite ou a treinar por falta de registros. A análise preserva o prompt, a data e as limitações, sem mudar o plano. Detalhes: [DAY_REVIEW.md](docs/DAY_REVIEW.md).
+
 **RF-24 — Análises datadas.** Permitir análise do dia e do período, com escopo explícito. Guardar entrada/contexto, versão dos dados, instruções relevantes, origem da resposta, data e saída. Se os dados mudam, a análise anterior fica identificada como baseada em uma versão antiga.
 
 Analisar um dia passado não pode usar dados de dias futuros sem informar que se trata de revisão retrospectiva. Falha de geração não elimina uma análise anterior válida.

@@ -179,6 +179,44 @@ def install_personal_routes(app, runtime, root, diary, manager):
     def assistant_history():
         return {'history': artifacts.read('assistant')}
 
+    def prepare_day_review(day, notes=''):
+        from dashboard.day_review import prepare
+        snap = snapshot()
+        state = health.read()
+        summary = health._summary(state, day, snap, diary, days=7)[0]
+        return prepare(day, snap, state, summary, diary,
+                       notes=notes, planning=artifacts.read('planning'))
+
+    @app.get('/api/day-review/{day}')
+    def day_review(day: date):
+        def read():
+            prepared = prepare_day_review(day)
+            previous = next((row for row in reversed(artifacts.read('assistant'))
+                             if row.get('analysis_type') == 'day_review' and row.get('date') == day.isoformat()), None)
+            stale = bool(previous and previous.get('data_fingerprint') !=
+                         prepare_day_review(day, previous.get('context', {}).get('user_report', ''))['data_fingerprint'])
+            config = configuration()
+            return {'report': previous, 'stale': stale, 'context': prepared['context'],
+                    'configured': config['configured'] and config['provider'] == 'ollama',
+                    'model': config['model'], 'references': prepared['context']['references']}
+        return perform(read)
+
+    @app.post('/api/day-review/{day}')
+    def generate_day_review(day: date, payload: dict = Body(...)):
+        def generate():
+            from dashboard.day_review import QUESTION
+            prepared = prepare_day_review(day, payload.get('notes', ''))
+            config = configuration()
+            if not config['configured'] or config['provider'] != 'ollama':
+                raise ValueError('Configure o Ollama local para analisar o dia sem cobrança de API.')
+            limit = int(health.read()['preferences'].get('ai_daily_limit', 20))
+            report = answer(artifacts, prepared, QUESTION, day, daily_limit=limit)
+            fresh = prepare_day_review(day, prepared['context']['user_report'])
+            return {'report': report, 'stale': report.get('data_fingerprint') != fresh['data_fingerprint'],
+                    'context': fresh['context'], 'configured': True, 'model': config['model'],
+                    'references': fresh['context']['references']}
+        return perform(generate)
+
     @app.post('/api/assistant')
     def assistant(payload: dict = Body(...)):
         def generate():

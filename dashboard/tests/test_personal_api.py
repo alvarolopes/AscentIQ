@@ -228,6 +228,55 @@ class PersonalApiTests(unittest.TestCase):
         self.assertEqual(self.summary()["state"]["profile"]["birth_date"], "1990-06-15")
         self.assertEqual(self.summary()["summary"]["profile"]["birth_date"], "1990-06-15")
 
+    def test_day_review_is_local_clock_aware_cached_and_preserves_plans_and_failed_reports(self):
+        url = f'/api/day-review/{self.day}'
+        other = TestClient(self.app)
+        self.assertEqual(other.get(url).status_code, 401)
+        other.close()
+        self.assertEqual(self.client.post(url, json={'notes': 'Exemplo'}).status_code, 403)
+        self.seed_goal()
+        self.food(self.day, kcal=500)
+        self.post('/api/integrations/ai', {'credentials': {'provider': 'ollama', 'local_model': 'qwen3.5:4b'}})
+        before = self.summary()['state']['plans']
+        fixed = datetime.now(TZ).replace(second=0, microsecond=0)
+        from dashboard.day_review import SECTIONS
+        sections = json.dumps({key: 'Análise sintética com limitações e opções condicionais.' for key in SECTIONS})
+        with patch('dashboard.day_review.datetime') as clock, patch('dashboard.assistant.request_text', return_value=sections) as infer:
+            clock.now.return_value = fixed
+            clock.fromisoformat.side_effect = datetime.fromisoformat
+            first = self.post(url, {'notes': 'Já jantei, sem fome e pouca energia na corrida.'})
+            repeated = self.post(url, {'notes': 'Já jantei, sem fome e pouca energia na corrida.'})
+        self.assertEqual(infer.call_count, 1)
+        self.assertTrue(infer.call_args.kwargs['json_output'])
+        self.assertTrue(infer.call_args.kwargs['local_only'])
+        self.assertEqual(first['report']['id'], repeated['report']['id'])
+        self.assertIn('Não ordene', infer.call_args.args[0])
+        self.assertEqual(first['report']['analysis_type'], 'day_review')
+        self.assertEqual(first['context']['clock']['timezone'], 'America/Sao_Paulo')
+        self.assertEqual(first['report']['source'], 'ollama')
+        self.assertIsNone(first['context']['estimated_deficit_kcal'])
+        self.assertEqual(self.summary()['state']['plans'], before)
+        self.assertFalse(self.client.get(url).json()['stale'])
+        self.food(self.day, kcal=300)
+        self.assertTrue(self.client.get(url).json()['stale'])
+        with patch('dashboard.assistant.request_text', side_effect=RuntimeError('Modelo local indisponível')):
+            self.post(url, {'notes': 'Mesmo relato, registros novos.'}, 503)
+        self.assertEqual(self.client.get(url).json()['report']['id'], first['report']['id'])
+        with patch('dashboard.assistant.request_text', return_value='Resposta não estruturada com 1134 kcal incorretas.'):
+            self.post(url, {'notes': 'Mesmo relato, interpretação inválida.'}, 503)
+        self.assertEqual(self.client.get(url).json()['report']['id'], first['report']['id'])
+
+    def test_day_review_rejects_paid_provider_future_and_invalid_notes_without_ai(self):
+        url = f'/api/day-review/{self.day}'
+        with patch('dashboard.personal_api.configuration', return_value={'configured': True, 'provider': 'openai', 'model': 'unused'}), patch('dashboard.assistant.request_text') as infer:
+            self.assertFalse(self.client.get(url).json()['configured'])
+            self.post(url, {'notes': 'Contexto sintético'}, 400)
+            self.post(url, {'notes': True}, 400)
+            self.post(url, {'notes': 'x' * 3001}, 400)
+            future = self.day + timedelta(days=1)
+            self.assertEqual(self.client.get(f'/api/day-review/{future}').status_code, 400)
+            infer.assert_not_called()
+
     def test_profile_goal_initial_plan_and_dated_measurements(self):
         goal_state = self.seed_goal()
         self.assertEqual(goal_state["goals"][0]["status"], "active")
