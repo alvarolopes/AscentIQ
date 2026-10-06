@@ -28,6 +28,7 @@ class NutritionTargetTests(unittest.TestCase):
                          'medical': {'records': ['private medical fixture']}, 'gpx': 'private geometry fixture'}
         self.targets = NutritionTargets(self.health, lambda: self.snapshot)
         self.output = json.dumps({'energy_adjustment_pct': -0.1, 'protein_g_per_kg': 1.8,
+                                 'fat_energy_fraction': 0.30,
                                  'reason': 'Estimativa sintética para o objetivo e treino.', 'limitations': ['Referência estimada.']})
 
     def tearDown(self):
@@ -45,10 +46,16 @@ class NutritionTargetTests(unittest.TestCase):
             context = json.loads(infer.call_args.args[1])
             self.assertEqual(context['profile']['weight_kg'], 80)
             self.assertEqual(context['goal']['id'], 'synthetic-goal')
+            self.assertNotIn('effective_from', context['goal'])
             self.assertEqual(len(context['activities_14_days']), 1)
+            self.assertEqual(len(context['activities_today']), 1)
+            self.assertEqual(context['method'], 'daily_local_ai_targets_v2')
+            self.assertAlmostEqual(first['fat_g'] * 9 / first['kcal'], 0.30, delta=0.001)
             self.assertNotIn('medical', context)
             self.assertNotIn('gpx', context)
             self.assertNotIn('food', context)
+            self.assertNotIn('Referência estimada.', first['limitations'])
+            self.assertTrue(any('tendência' in text for text in first['limitations']))
             self.targets.refresh(self.day)
             self.assertEqual(infer.call_count, 1)
         plan = _active_plan(self.health.read(), self.day)
@@ -145,3 +152,30 @@ class NutritionTargetTests(unittest.TestCase):
         self.assertEqual(self.targets.view(self.day)['status'], 'ready')
         self.assertEqual(self.targets.view(tomorrow)['kcal'], 2400)
         self.assertEqual(self.targets.view(tomorrow)['protein_g'], 150)
+
+    def test_invalid_fat_distribution_preserves_existing_plan(self):
+        with patch('dashboard.nutrition_targets.request_text', return_value=self.output):
+            self.targets.refresh(self.day)
+        before = _active_plan(self.health.read(), self.day)['id']
+        self.snapshot['activities'][0]['duration_seconds'] = 7200
+        for fraction in (None, True, 0.20, 0.50):
+            output = {**json.loads(self.output), 'fat_energy_fraction': fraction}
+            with patch('dashboard.nutrition_targets.request_text', return_value=json.dumps(output)):
+                self.targets.refresh(self.day, force=True)
+            self.assertEqual(self.targets.status, 'error')
+            self.assertEqual(_active_plan(self.health.read(), self.day)['id'], before)
+
+    def test_weight_context_excludes_future_and_old_measurements(self):
+        for identifier, offset, weight in (('old', -35, 83), ('recent', -7, 81), ('future', 1, 79)):
+            self.health.save('measurements', {'id': identifier, 'date': (self.day + timedelta(days=offset)).isoformat(),
+                                             'weight_kg': weight})
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertEqual(context['weight_history_30_days'], [{'date': (self.day - timedelta(days=7)).isoformat(), 'weight_kg': 81}])
+
+    def test_unverified_clinical_claim_does_not_publish_plan(self):
+        before = self.health.read()['plans']
+        output = {**json.loads(self.output), 'reason': 'A distribuição garante estabilidade hormonal.'}
+        with patch('dashboard.nutrition_targets.request_text', return_value=json.dumps(output)):
+            self.targets.refresh(self.day)
+        self.assertEqual(self.targets.status, 'error')
+        self.assertEqual(self.health.read()['plans'], before)

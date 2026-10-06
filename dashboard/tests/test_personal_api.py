@@ -206,6 +206,7 @@ class PersonalApiTests(unittest.TestCase):
         self.seed_goal()
         self.post('/api/integrations/ai', {'credentials': {'provider': 'ollama', 'local_model': 'qwen3.5:4b'}})
         output = json.dumps({'energy_adjustment_pct': -0.1, 'protein_g_per_kg': 1.8,
+                             'fat_energy_fraction': 0.30,
                              'reason': 'Meta sintética para o perfil.', 'limitations': []})
         with patch('dashboard.nutrition_targets.request_text', return_value=output):
             self.app.state.nutrition_targets.refresh(self.day)
