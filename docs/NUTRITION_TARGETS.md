@@ -16,6 +16,7 @@ Cada publicação cria uma versão datada do plano, com modelo, contexto, justif
 - Objetivo principal e demais objetivos ativos, respeitando prioridade e vigência.
 - Atividades dos últimos 14 dias: modalidade, duração, distância e elevação; volume dos últimos sete dias como referência de atividade.
 - Check-ins dos últimos três dias para recuperação. Doença declarada, dor ou fadiga de oito ou mais bloqueiam a sugestão de déficit nessa geração.
+- Treinos do dia separados do histórico e medidas de peso dos últimos 30 dias, sem registros futuros. A vigência do objetivo não é interpretada como data de prova; proximidade de evento exige data explícita.
 
 Não entram refeições, fotos, documentos médicos ou geometria GPX. O cálculo não compensa uma refeição com restrição posterior. Peso com mais de 30 dias aparece nas limitações, sem virar uma medida atual inventada.
 
@@ -32,7 +33,9 @@ O software calcula a referência de repouso pela equação já documentada em [P
 
 Essa aproximação não mede rotina, metabolismo ou atividade fora dos treinos. O total já inclui atividade habitual: calorias isoladas de treino e totais parciais do relógio não são somados novamente.
 
-O Ollama recebe essa referência e escolhe o ajuste energético e a proteína por quilograma, explicando a decisão. A aplicação valida valores finitos, restringe o ajuste a no máximo 15% abaixo (ou ao limite menor configurado) e 10% acima da referência, respeita o piso configurado e o repouso estimado, e arredonda calorias em passos de 50 sem ultrapassar esses limites. Proteína fica entre 1,4 e 2,0 g/kg. Gorduras usam 25% da meta energética e carboidratos completam a energia restante; esses dois últimos valores são parâmetros iniciais do produto. Resultado incompatível é rejeitado.
+O Ollama recebe essa referência e escolhe o ajuste energético, a proteína por quilograma e a fração energética de gordura, explicando a decisão. A aplicação valida valores finitos, restringe o ajuste a no máximo 15% abaixo (ou ao limite menor configurado) e 10% acima da referência, respeita o piso configurado e o repouso estimado, e arredonda calorias em passos de 50 sem ultrapassar esses limites. Proteína fica entre 1,4 e 2,0 g/kg; o prompt prioriza 1,8–2,0 para perda de gordura com preservação muscular, permitindo exceções justificadas. Gorduras podem ocupar 25–30% da energia, uma faixa conservadora do produto. Carboidratos completam a energia restante. O prompt considera a demanda dos treinos do dia ao distribuir os macros, sem prometer uma necessidade medida ou ajuste clínico. Resultado incompatível é rejeitado e preserva o plano anterior.
+
+A versão `daily_local_ai_targets_v2` entra no contexto e na identificação do cálculo, provocando uma revisão dos planos antigos mesmo sem mudança de perfil. O histórico é preservado. A explicação deve distinguir estimativa de gasto de manutenção comprovada, reconhecer peso antigo e rotina desconhecida e não usar uma data de vigência como evidência de evento futuro. O histórico de peso oferece contexto; não há calibração automática de gasto por ingestão e tendência nesta geração.
 
 A [posição da ISSN sobre proteína e exercício](https://pmc.ncbi.nlm.nih.gov/articles/PMC5477153/) descreve a faixa de 1,4–2,0 g/kg para a maioria dos indivíduos saudáveis que se exercitam. O [Body Weight Planner do NIDDK](https://www.niddk.nih.gov/health-information/weight-management/body-weight-planner) ilustra planejamento individual com peso, atividade e objetivo. Essas fontes não validam a heurística de atividade, os limites de ajuste ou a distribuição de macros desta aplicação. A referência calculada permanece uma estimativa, sem promessa de adequação clínica ou resultado garantido.
 
