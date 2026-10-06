@@ -172,10 +172,12 @@ class NutritionTargetTests(unittest.TestCase):
         _, context, _, _ = context_for(self.health, self.snapshot, self.day)
         self.assertEqual(context['weight_history_30_days'], [{'date': (self.day - timedelta(days=7)).isoformat(), 'weight_kg': 81}])
 
-    def test_unverified_clinical_claim_does_not_publish_plan(self):
-        before = self.health.read()['plans']
+    def test_unverified_clinical_claim_is_omitted_but_valid_targets_are_published(self):
         output = {**json.loads(self.output), 'reason': 'A distribuição garante estabilidade hormonal.'}
         with patch('dashboard.nutrition_targets.request_text', return_value=json.dumps(output)):
             self.targets.refresh(self.day)
-        self.assertEqual(self.targets.status, 'error')
-        self.assertEqual(self.health.read()['plans'], before)
+        self.assertEqual(self.targets.status, 'ready')
+        plan = _active_plan(self.health.read(), self.day)
+        self.assertNotIn('estabilidade hormonal', plan['reason'])
+        self.assertIn('Meta:', plan['reason'])
+        self.assertEqual(plan['protein_g'], 144)
