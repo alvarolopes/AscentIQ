@@ -46,6 +46,7 @@ class NutritionTargetTests(unittest.TestCase):
             context = json.loads(infer.call_args.args[1])
             self.assertEqual(context['profile']['weight_kg'], 80)
             self.assertEqual(context['goal']['id'], 'synthetic-goal')
+            self.assertNotIn('effective_from', context['goal'])
             self.assertEqual(len(context['activities_14_days']), 1)
             self.assertEqual(len(context['activities_today']), 1)
             self.assertEqual(context['method'], 'daily_local_ai_targets_v2')
@@ -168,3 +169,11 @@ class NutritionTargetTests(unittest.TestCase):
                                              'weight_kg': weight})
         _, context, _, _ = context_for(self.health, self.snapshot, self.day)
         self.assertEqual(context['weight_history_30_days'], [{'date': (self.day - timedelta(days=7)).isoformat(), 'weight_kg': 81}])
+
+    def test_unverified_clinical_claim_does_not_publish_plan(self):
+        before = self.health.read()['plans']
+        output = {**json.loads(self.output), 'reason': 'A distribuição garante estabilidade hormonal.'}
+        with patch('dashboard.nutrition_targets.request_text', return_value=json.dumps(output)):
+            self.targets.refresh(self.day)
+        self.assertEqual(self.targets.status, 'error')
+        self.assertEqual(self.health.read()['plans'], before)

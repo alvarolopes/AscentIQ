@@ -36,6 +36,11 @@ Peso isolado não prova perda de gordura; não recalibre gasto por pequenas osci
 effective_from é vigência do registro, não data de prova. Somente due_date explícito
 de objetivo de evento permite discutir proximidade; data passada não é evento futuro.
 Não invente evento, data, ingestão total, fome, recuperação ou exames necessários.
+Não atribua à distribuição efeitos comprovados sobre hormônios, estresse metabólico,
+catabolismo ou síntese proteica individual. Não use 'maximizar', 'maximizada',
+'estabilidade hormonal' ou 'estresse metabólico': esses resultados não foram medidos.
+Não chame um peso antigo de peso atual. Ausência de data de evento significa
+proximidade desconhecida, nunca prova de que não exista evento futuro.
 Escreva uma justificativa concreta: referência estimada, ajuste escolhido, proteína,
 distribuição dos macros e o que falta para validar a meta. Evite certezas clínicas.
 O gasto de referência já inclui atividade habitual: não some treinos novamente.
@@ -87,9 +92,14 @@ def context_for(health, snapshot, day):
                          for key in ('fatigue', 'pain')) for row in checks)
     lower_adjustment = 0 if recovery_alert else -min(0.15, policy['max_planned_deficit_pct'])
     weights = _weights(state, snapshot, day)
-    context = {'method': METHOD, 'date': day.isoformat(), 'profile': {k: profile.get(k) for k in
+    def goal_context(row):
+        return {key: row[key] for key in ('id', 'type', 'description', 'priority', 'due_date',
+                                         'target_value', 'desired_weekly_change_kg', 'preserve') if key in row}
+
+    context = {'method': METHOD, 'prompt_revision': 2, 'date': day.isoformat(), 'profile': {k: profile.get(k) for k in
                ('age', 'birth_date', 'sex', 'height_cm', 'weight_kg', 'weight_reference_date')},
-               'goal': goal, 'active_goals': [g for g in _goals_for_day(state, day) if g.get('status') == 'active'],
+               'goal': goal_context(goal) if goal else None,
+               'active_goals': [goal_context(g) for g in _goals_for_day(state, day) if g.get('status') == 'active'],
                'activities_14_days': activities,
                'activities_today': [row for row in activities if str(row['date'])[:10] == day.isoformat()],
                'weight_history_30_days': [{'date': row['date'], 'weight_kg': row['weight_kg']}
@@ -168,6 +178,9 @@ class NutritionTargets:
                     raise ValueError('A IA sugeriu valores fora dos limites; a última meta foi preservada.')
             if not isinstance(result.get('reason'), str) or not 1 <= len(result['reason']) <= 3000:
                 raise ValueError('A IA não explicou a meta; a última meta foi preservada.')
+            if any(claim in result['reason'].lower() for claim in
+                   ('maximiz', 'estabilidade hormonal', 'estresse metabólico')):
+                raise ValueError('A IA apresentou efeitos não verificados; a última meta foi preservada.')
             if not isinstance(result.get('limitations'), list) or len(result['limitations']) > 20 or any(not isinstance(x, str) or len(x) > 500 for x in result['limitations']):
                 raise ValueError('A IA retornou limitações inválidas; a última meta foi preservada.')
             reference = context['energy_reference']
