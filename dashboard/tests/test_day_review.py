@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from dashboard.day_review import SECTIONS, prepare, render_response
+from dashboard.day_review import SECTIONS, interpretation_context, prepare, render_response
 from dashboard.food_store import FoodDiary
 from dashboard.health import HealthStore
 
@@ -138,3 +138,28 @@ class DayReviewTests(unittest.TestCase):
                 request_text('Instruções sintéticas', 'Contexto sintético', local_only=True)
             local.assert_called_once()
             paid.assert_not_called()
+
+    def test_small_model_receives_comparisons_and_keeps_exact_metrics_in_local_facts(self):
+        result = self.prepare(notes='Já jantei e tive pouca energia na corrida.')
+        context = interpretation_context(result['context'])
+        self.assertEqual(context['food']['registered_energy_vs_target'], 'abaixo da referência estimada')
+        self.assertEqual(context['food']['nutrients_vs_targets']['carbs_g'], 'desconhecido')
+        known = {**result['context'], 'plan': {**result['context']['plan'], 'carbs_g': 300}}
+        self.assertEqual(interpretation_context(known)['food']['nutrients_vs_targets']['carbs_g'], 'abaixo da referência estimada')
+        self.assertFalse(context['energy']['usable_for_daily_balance'])
+        self.assertEqual(context['training']['modalities_today'], ['running', 'strength'])
+        self.assertTrue(context['training']['time_order_intensity_and_weather_are_not_provided'])
+        self.assertEqual(context['preferences']['allergies'], 'amendoim')
+        self.assertNotIn('500', result['prompt'])
+        self.assertNotIn('2400', result['prompt'])
+        self.assertIn('500 kcal', result['context']['facts_summary'])
+        self.diary.change(self.day, {'id': 'missing-macro', 'meal': 'Lanche', 'text': 'Nutriente desconhecido',
+                         'analysis': {'items': [{'name': 'Exemplo', 'kcal': 100, 'carbs_g': None}]}})
+        incomplete = self.prepare()['context']
+        incomplete['plan']['carbs_g'] = 300
+        self.assertEqual(interpretation_context(incomplete)['food']['nutrients_vs_targets']['carbs_g'], 'desconhecido')
+        self.diary.change(self.day, remove='missing-macro')
+        self.diary.change(self.day, {'id': 'meal', 'meal': 'Jantar', 'text': 'Pendente', 'analysis': None})
+        pending = interpretation_context(self.prepare()['context'])
+        self.assertEqual(pending['food']['registered_energy_vs_target'], 'desconhecido')
+        self.assertTrue(pending['food']['has_pending_estimates'])
