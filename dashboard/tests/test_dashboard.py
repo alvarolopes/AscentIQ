@@ -82,6 +82,14 @@ class SnapshotTests(Fixture):
         self.save("strength_training_consolidated",[{"date":"2026-09-28"}])
         snapshot=build_snapshot(self.root,date(2026,9,28))
         self.assertIsNone(snapshot["strength"][0]["volume_kg"])
+        self.assertIsNone(snapshot["strength"][0]["duration_seconds"])
+
+    def test_strength_duration_is_available_for_daily_totals(self):
+        self.save("strength_training_consolidated", [
+            {"date": "2026-09-28", "garmin_elapsed_time": "00:51:16", "hevy_duration": "00:50:00"},
+            {"date": "2026-09-28", "hevy_workout_id": "h2", "hevy_duration": "01:05:00"}])
+        rows = build_snapshot(self.root, date(2026, 9, 28))["strength"]
+        self.assertEqual([row["duration_seconds"] for row in rows], [3076, 3900])
 
     def test_hevy_link_one_consolidated_session(self):
         self.save("hevy_workouts",[{"hevy_workout_id":"h1","exercises":[{"name":"Squat"}]}])
