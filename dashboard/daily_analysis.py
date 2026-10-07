@@ -26,10 +26,11 @@ Use o sono datado do dia e dos seis dias anteriores como contexto: a data é a
 atribuída pelo Garmin, não necessariamente a noite após o treino. Não confunda
 duração com pontuação ou recuperação comprovada. Pontuação ausente não significa
 sono ausente; não afirme que faltam dados de sono quando há duração registrada.
-Escreva um relatório de até 800 palavras com títulos: Resumo do dia; Efeitos
-prováveis por modalidade; Efeito combinado; Recuperação e próximo treino;
-Limitações dos dados. Cite métricas disponíveis para sustentar a análise,
-explicando unidades. Dê sugestões condicionais, sem prescrição médica, garantias
+Escreva até 120 palavras: uma conclusão curta sobre o dia e no máximo três
+ações práticas para recuperação e próximo treino. Use linguagem comum, sem
+relatório por modalidade ou explicações teóricas. Cite apenas as métricas essenciais,
+com unidades. Mencione uma limitação somente se mudar a orientação, sem repetir
+ressalvas. Dê sugestões condicionais, sem prescrição médica, garantias
 ou prazos exatos de recuperação. Se não houver treinos, informe apenas que não
 há registros suficientes. Não confunda falta de registro com descanso confirmado.
 """

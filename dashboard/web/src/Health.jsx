@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import DayReview from './DayReview';
+import Frequency from './Frequency';
 import {InfoButton,Modal,PagedList} from './ui';
 import {array,dayLabel,ErrorNotice,format,optionalNumber,PageHeading,personalApi,PersonalLoading,StatusNotice,today,usePersonal} from './personalApi';
 
@@ -67,7 +68,7 @@ export function Today({data,onNavigate,onAssistant}) {
       <div className="split dashboard-summary"><SummaryCard title="Alimentação" value={<>{format(registered,0)} <small>/ {kcalTarget!=null?format(kcalTarget,0):'Sem meta'} kcal</small></>} note={`${intakeStatus[energy.intake_status] || 'Sem registros'}${energy.pending_count?` · ${energy.pending_count} estimativa(s) pendente(s)`:''}`} onClick={()=>navigate('nutrition')} action="Ver Nutrition"/><SummaryCard title="Proteína" value={<>{format(protein,0)} <small>/ {proteinTarget!=null?format(proteinTarget,0):'Sem meta'} g</small></>} note={proteinKnown?'Total das estimativas disponíveis.':'Ainda sem proteína estimada neste dia.'}/><SummaryCard title="Treino" value={<>{sessions.length} <small>atividade(s)</small></>} note={trainingNote} onClick={()=>navigate('overview')} action="Ver Workouts"/><SummaryCard title="Sono" value={sleep?.duration_minutes!=null?<>{format(sleep.duration_minutes/60,1)} <small>h</small></>:'Sem dado'} note={sleep?`Referência: ${dayLabel(sleep.date)}${sleep.score!=null?` · pontuação ${format(sleep.score,0)}`:''}`:`Nenhum registro para ${dayLabel(day)}.`} onClick={()=>navigate('sleep')} action="Ver Sleep"/></div>
       <div className="split"><Section title="Objetivo principal"><h3>{goal?.description || 'Você ainda não definiu um objetivo.'}</h3><p className="small muted">{activePlan?`Plano ${activePlan.version || 1} · próxima revisão ${dayLabel(activePlan.next_review_date)}`:'Defina um objetivo para acompanhar seu progresso.'}</p><button onClick={()=>navigate('goals')}>Abrir objetivos e plano</button></Section><Section title="Check-in"><p>{checkin?'Seu contexto de recuperação está registrado.':'Sem check-in para este dia.'}</p><p className="small muted">Fadiga, disposição, fome e sono ajudam a interpretar seus registros.</p><button onClick={()=>open('checkin')}>{checkin?'Editar check-in':'Registrar check-in'}</button></Section></div>
       {model.value.nutrition_targets?.status==='missing_data'&&<div className="notice"><strong>Complete seu perfil para calcular a meta</strong><p>{model.value.nutrition_targets.message}</p><button onClick={()=>navigate('profile')}>Perfil e medidas</button></div>}
-    </>}
+    <Frequency revision={`${model.state.revision}-${data.generated_at}`}/></>}
     {dialog==='review'&&<Modal title={`Análise do dia · ${dayLabel(day)}`} onClose={()=>setDialog(null)} busy={dialogState.busy} dirty={dialogState.dirty}><DayReview day={day} revision={model.state.revision} onStateChange={setDialogState}/></Modal>}
     {dialog==='checkin'&&<Modal title={`Check-in · ${dayLabel(day)}`} onClose={()=>setDialog(null)} busy={dialogState.busy} dirty={dialogState.dirty}><CheckinForm day={day} model={model} onStateChange={setDialogState} onSaved={()=>setDialog(null)}/></Modal>}
   </>;

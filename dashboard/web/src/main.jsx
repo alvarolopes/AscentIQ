@@ -10,6 +10,7 @@ import Goals from './Goals';
 import Assistant from './Assistant';
 import Settings from './Settings';
 import Documents from './Documents';
+import InstallApp from './InstallApp';
 import Planning from './Planning';
 import {Modal,PagedList,InfoButton} from './ui';
 import {today} from './personalApi';
@@ -106,6 +107,17 @@ function NavIcon({id}) {
   const paths={dashboard:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',workouts:'M3 8v8 M6 5v14 M18 5v14 M21 8v8 M6 12h12',nutrition:'M6 3v8 M3 3v5a3 3 0 0 0 6 0V3 M6 11v10 M18 3c-5 4-5 9 0 9 M18 3v18',sleep:'M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5'};
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[id]}/></svg>;
 }
+function AccountMenu({name,onNavigate,onLogout}) {
+  const ref=React.useRef(null);
+  useEffect(()=>{
+    const close=e=>{if(!ref.current?.contains(e.target))ref.current.open=false;};
+    const escape=e=>{if(e.key==='Escape'&&ref.current?.open){ref.current.open=false;ref.current.querySelector('summary').focus();}};
+    document.addEventListener('pointerdown',close);document.addEventListener('keydown',escape);
+    return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',escape);};
+  },[]);
+  function select(action){ref.current.open=false;action();}
+  return <details ref={ref} className="account-menu"><summary aria-label="Abrir menu da conta"><span className="avatar">{(name || 'Você').split(' ').slice(0,2).map(x=>x[0]).join('')}</span><span className="account-name">{name || 'Minha conta'}</span><span aria-hidden="true">⌄</span></summary><div className="account-dropdown"><strong>{name || 'Minha conta'}</strong><button onClick={()=>select(()=>onNavigate('profile'))}>Conta e perfil</button><button onClick={()=>select(()=>onNavigate('settings'))}>Dados e fontes</button><button onClick={()=>select(onLogout)}>Sair</button></div></details>;
+}
 function App() {
   const [authenticated,setAuthenticated]=useState(null),[data,setData]=useState(null),[tab,setTab]=useState('dashboard'),[jobs,setJobs]=useState({jobs:[]}),[error,setError]=useState('');
   const [modal,setModal]=useState(null),[modalState,setModalState]=useState({busy:false,dirty:false}),[mobileMenu,setMobileMenu]=useState(false);
@@ -124,16 +136,16 @@ function App() {
   if(!authenticated)return <Login onLogin={()=>setAuthenticated(true)}/>;
   if(!data)return <div className="loading">{error || 'Preparando seu histórico…'}{error&&<button onClick={refresh}>Tentar novamente</button>}</div>;
   const active=jobs.jobs.find(j=>['queued','running'].includes(j.status));
-  return <div className="app">
+  return <div className="app"><header className="topbar"><div><button className="mobile-menu-button" aria-label="Abrir menu principal" aria-expanded={mobileMenu} onClick={()=>setMobileMenu(v=>!v)}>☰</button><div className="brand"><Peak/><span>AscentIQ<small>SAÚDE E FITNESS PESSOAL</small></span></div></div><div className="topbar-right"><span className="sync-date"><i/>{busy?'Atualização em andamento':`Treinos: ${date(data.freshness.activities)}`}</span><AccountMenu name={data.athlete.name} onNavigate={navigate} onLogout={logout}/></div></header>
     {mobileMenu&&<button className="menu-backdrop" aria-label="Fechar menu" onClick={()=>setMobileMenu(false)}/>}
     <aside className={'sidebar '+(mobileMenu?'mobile-open':'')}>
-      <div className="brand"><Peak/><span>AscentIQ<small>SAÚDE E FITNESS PESSOAL</small></span></div>
+
       <div className="sidebar-label">SEU PAINEL</div>
       <nav aria-label="Áreas do painel">{nav.map(([id,label])=><button key={id} className={groupFor(tab)===id?'active':''} aria-current={groupFor(tab)===id?'page':undefined} onClick={()=>navigate(id)}><NavIcon id={id}/><span>{label}</span></button>)}</nav>
-      <div className="sidebar-bottom"><div className="user-name"><div className="avatar">{(data.athlete.name || 'Você').split(' ').slice(0,2).map(x=>x[0]).join('')}</div><strong>{data.athlete.name}</strong></div><details className="user-menu"><summary>Conta e dados</summary><button onClick={()=>navigate('settings')}>Dados e fontes</button><button onClick={()=>navigate('profile')}>Perfil e medidas</button><button onClick={logout}>Sair</button></details><div className="privacy">Dados privados · ambiente local</div></div>
+
     </aside>
     <main>
-      <header className="topbar"><div><button className="mobile-menu-button" aria-label="Abrir menu principal" aria-expanded={mobileMenu} onClick={()=>setMobileMenu(v=>!v)}>☰</button><strong>{tabLabel(tab)}</strong></div><span className="sync-date"><i/>{busy?'Atualização em andamento':`Treinos: ${date(data.freshness.activities)}`}</span></header>
+
       <div className="content">
         {sections[groupFor(tab)]&&<nav className="section-tabs" aria-label={'Áreas de '+tabLabel(groupFor(tab))}>{sections[groupFor(tab)].map(([id,label])=><button key={id} className={tab===id?'active':''} aria-current={tab===id?'page':undefined} onClick={()=>setTab(id)}>{label}</button>)}</nav>}
         {error&&<div className="error" role="alert">{error}<button onClick={()=>setError('')}>Fechar</button></div>}
@@ -153,4 +165,4 @@ function App() {
     {assistantOpen&&assistantMinimized&&<button className="assistant-restore" onClick={()=>setAssistantMinimized(false)}>Abrir assistente</button>}
   </div>;
 }
-createRoot(document.getElementById('root')).render(<App/>);
+createRoot(document.getElementById('root')).render(<><App/><InstallApp/></>);

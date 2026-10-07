@@ -22,6 +22,8 @@ Inclua a quantidade no nome. Os nutrientes devem representar essa porção,
 nunca a referência de 100 g quando a porção informada tiver outro peso.
 Não afirme ter consultado uma base ou rótulo que não foi fornecido.
 Estime porções ausentes, mas declare claramente as hipóteses nas notas.
+Nas notas, seja breve: só hipóteses de porção e incertezas relevantes, sem repetir
+os alimentos e nutrientes já listados ou acrescentar explicações genéricas.
 Diferencie peso cru e pronto. Não invente
 rótulos exatos de marcas; identifique estimativas. Não prescreva metas ou dietas.'''
 
