@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
 
 from dashboard.artifacts import Artifacts
-from dashboard.assistant import answer, prepare_personal, request_text
+from dashboard.assistant import answer, personal_period, prepare_personal, request_text
 from dashboard.daily_analysis import configuration
 from dashboard.health import HealthStore, ConflictError
 from dashboard.imports import ImportService
@@ -169,15 +169,31 @@ def install_personal_routes(app, runtime, root, diary, manager):
         return perform(lambda: imports.reconcile(payload.get('record_id') or payload.get('id'), payload.get('action'), payload.get('other_id')))
 
     @app.get('/api/assistant/context')
-    def assistant_context(day: date | None = None, days: int = Query(default=14, ge=1, le=30), include_medical: bool = False):
-        day = day or datetime.now(TZ).date()
+    def assistant_context(day: date | None = None, days: int = Query(default=14, ge=1, le=90), include_medical: bool = False,
+                          period: str = 'days', start: date | None = None, end: date | None = None):
+        return perform(lambda: prepare_assistant(day or datetime.now(TZ).date(), days, include_medical,
+                                                 period=period, start=start, end=end))
+
+    def prepare_assistant(day, days, include_medical, *, period='days', start=None, end=None):
+        _, day, days = personal_period(day, days, period=period, start=start, end=end)
         snap = snapshot()
         return {**prepare_personal(day, days, snap, health.read(), health.summary(day, snap, diary, days=days), diary,
-                                  include_medical=include_medical, documents=artifacts.read('documents')), **configuration()}
+                                  include_medical=include_medical, documents=artifacts.read('documents'), period=period), **configuration()}
 
     @app.get('/api/assistant/history')
-    def assistant_history():
-        return {'history': artifacts.read('assistant')}
+    def assistant_history(page: int = Query(default=1, ge=1), page_size: int = Query(default=10, ge=10, le=15),
+                          conversation_id: str | None = None):
+        if page_size not in (10, 15):
+            raise HTTPException(400, 'Use 10 ou 15 registros por página.')
+        rows = [x for x in reversed(artifacts.read('assistant')) if x.get('analysis_type', 'conversation') == 'conversation'
+                and (conversation_id is None or x.get('conversation_id') == conversation_id)]
+        total = len(rows)
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, pages)
+        fields = ('id', 'date', 'created_at', 'question', 'text', 'model', 'source', 'conversation_id', 'scope')
+        return {'history': [{key: row[key] for key in fields if key in row}
+                            for row in rows[(page - 1) * page_size:page * page_size]],
+                'pagination': {'page': page, 'page_size': page_size, 'pages': pages, 'total': total}}
 
     def prepare_day_review(day, notes=''):
         from dashboard.day_review import prepare
@@ -222,8 +238,8 @@ def install_personal_routes(app, runtime, root, diary, manager):
         def generate():
             day = date.fromisoformat(payload.get('day') or datetime.now(TZ).date().isoformat())
             days = int(payload.get('days', 14))
-            if not 1 <= days <= 30:
-                raise ValueError('Use um período de 1 a 30 dias.')
+            if not 1 <= days <= 90:
+                raise ValueError('Use um período de 1 a 90 dias.')
             question = str(payload.get('question', '')).strip()
             manual = payload.get('manual_response')
             include_medical = consent(payload, 'include_medical')
@@ -231,11 +247,15 @@ def install_personal_routes(app, runtime, root, diary, manager):
                 raise ValueError('A resposta importada deve ser texto.')
             if not 3 <= len(question) <= 5000 or (manual is not None and not 20 <= len(str(manual)) <= 30000):
                 raise ValueError('Informe uma pergunta e, ao importar, a resposta completa.')
-            prepared = assistant_context(day, days, include_medical)
+            period = payload.get('period', 'days')
+            prepared = prepare_assistant(day, days, include_medical, period=period,
+                                         start=payload.get('start'), end=payload.get('end'))
+            day = date.fromisoformat(prepared['context']['period']['to'])
             if payload.get('fingerprint') and payload['fingerprint'] != prepared['fingerprint']:
-                raise ConflictError('O contexto mudou. Revise os dados antes de importar a resposta.')
+                raise ConflictError('O contexto mudou. Consulte os dados novamente antes de enviar ou importar a resposta.')
             limit = int(health.read()['preferences'].get('ai_daily_limit', 20))
-            return answer(artifacts, prepared, question, day, manual_response=manual, daily_limit=limit)
+            return answer(artifacts, prepared, question, day, manual_response=manual, daily_limit=limit,
+                          conversation_id=payload.get('conversation_id'), message_ids=payload.get('message_ids', []))
         return perform(generate)
 
     @app.get('/api/documents')

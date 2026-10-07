@@ -221,7 +221,10 @@ class PersonalApiTests(unittest.TestCase):
             self.assertEqual(unauthenticated.get(path).status_code, 401)
         unauthenticated.close()
         self.assertEqual(self.client.post("/api/personal/profile", json={"value": {"name": "Ignored"}}).status_code, 403)
-        saved = self.post("/api/personal/profile", {"value": {"name": "Pessoa sintética", "birth_date": "1990-06-15"}, "revision": 0})
+        # An explicit validity date keeps this assertion stable if the suite spans
+        # local midnight between setUp and this request.
+        saved = self.post("/api/personal/profile", {"value": {"name": "Pessoa sintética", "birth_date": "1990-06-15",
+                          "effective_from": self.day.isoformat()}, "revision": 0})
         self.assertEqual(saved["revision"], 1)
         self.post("/api/personal/profile", {"value": {"name": "Stale"}, "revision": 0}, 409)
         self.post("/api/personal/measurements", {"record": {"date": self.day.isoformat(), "weight_kg": -1}}, 400)
@@ -380,6 +383,61 @@ class PersonalApiTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertNotIn("FUTURE_BODY_MARKER", result.json()["prompt"])
         self.assertNotIn("FUTURE_GOAL_MARKER", result.json()["prompt"])
+
+    def test_assistant_calendar_month_covers_exact_range_and_rejects_stale_data(self):
+        context = self.client.get('/api/assistant/context', params={'day': '2024-02-15', 'period': 'month'}).json()
+        self.assertEqual(context['context']['period']['from'], '2024-02-01')
+        self.assertEqual(context['context']['period']['to'], '2024-02-29')
+        self.assertEqual(context['context']['selection']['daily_rows']['food']['total'], 29)
+        self.food('2024-02-01', kcal=1500)
+        with patch('dashboard.assistant.request_text') as infer:
+            self.post('/api/assistant', {'day': '2024-02-15', 'period': 'month', 'question': 'Como foi este mês?',
+                      'fingerprint': context['fingerprint'], 'conversation_id': 'calendar-conversation'}, 409)
+        infer.assert_not_called()
+
+    def test_assistant_history_is_paginated_and_omits_day_reviews(self):
+        store = self.app.state.personal_artifacts
+        for index in range(26):
+            store.save('assistant', {'id': f'synthetic-{index}', 'analysis_type': 'conversation',
+                       'conversation_id': 'pagination-conversation', 'question': f'Synthetic {index}', 'text': 'Synthetic answer'})
+        store.save('assistant', {'id': 'day-review-hidden', 'analysis_type': 'day_review', 'text': 'Day review'})
+        first = self.client.get('/api/assistant/history').json()
+        self.assertEqual(len(first['history']), 10)
+        self.assertEqual(first['pagination']['total'], 26)
+        final = self.client.get('/api/assistant/history', params={'page': 99}).json()
+        self.assertEqual(final['pagination']['page'], 3)
+        self.assertEqual(len(final['history']), 6)
+        fifteen = self.client.get('/api/assistant/history', params={'page_size': 15, 'page': 2}).json()
+        self.assertEqual(len(fifteen['history']), 11)
+        self.assertEqual(self.client.get('/api/assistant/history', params={'page_size': 11}).status_code, 400)
+        self.assertEqual(self.client.get('/api/assistant/history', params={'conversation_id': 'other-conversation'}).json()['history'], [])
+
+    def test_assistant_follow_up_rejects_cross_conversation_message_references(self):
+        first = self.post('/api/assistant', {'question': 'FIRST_MARKER como foi meu dia?', 'conversation_id': 'first-conversation',
+                          'manual_response': 'Primeira resposta sintética da conversa, com dados preservados.'})
+        with patch('dashboard.assistant.request_text', return_value='Continuação sintética sem alterar registros.') as infer:
+            self.post('/api/assistant', {'question': 'Pode explicar melhor?', 'conversation_id': 'first-conversation',
+                      'message_ids': [first['id']]})
+            self.assertIn('FIRST_MARKER', infer.call_args.args[1])
+            self.post('/api/assistant', {'question': 'Outra pergunta', 'conversation_id': 'other-conversation',
+                      'message_ids': [first['id']]}, 400)
+            self.assertEqual(infer.call_count, 1)
+
+    def test_assistant_many_active_goals_fit_day_and_long_period_context(self):
+        self.seed_goal()
+        for index in range(16):
+            self.post('/api/personal/goals', {'record': {'id': f'additional-goal-{index}', 'type': 'custom',
+                       'description': f'Objetivo secundário sintético {index}', 'priority': index + 2,
+                       'status': 'active', 'effective_from': self.day.isoformat()}})
+        for days in (1, 31, 90):
+            with self.subTest(days=days):
+                response = self.client.get('/api/assistant/context', params={'day': self.day.isoformat(), 'days': days})
+                self.assertEqual(response.status_code, 200, response.text[:500])
+                context = response.json()['context']
+                self.assertEqual(context['active_goal']['id'], 'synthetic-goal')
+                self.assertEqual(context['selection']['goal_count'], 17)
+                self.assertLessEqual(context['selection']['goals_included'], 6)
+                self.assertEqual(context['selection']['daily_rows']['food']['total'], days)
 
     def test_export_excludes_credentials_and_contains_user_data(self):
         self.seed_goal()
