@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import builtins
-import json
 import os
-import sqlite3
 import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from dashboard.pipeline import publish_report, rebuild, sync_sources
-from dashboard.repository import operational_db, postgres_enabled
-from dashboard.snapshot import ROOT, TZ, build_snapshot
+import psycopg
+from psycopg.types.json import Jsonb
+
+from dashboard.repository import operational_db, operational_lock
+from dashboard.snapshot import ROOT, TZ
 
 
 @contextmanager
@@ -59,49 +59,45 @@ class JobManager:
         self.stop = threading.Event()
         self.thread: threading.Thread | None = None
         with self.db() as conn:
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, mode TEXT, status TEXT, created_at TEXT, finished_at TEXT, message TEXT, warnings TEXT, schedule_key TEXT UNIQUE)"
-            )
-            conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
             if recover_interrupted:
                 conn.execute(
                     "UPDATE jobs SET status='failed', message='Processo interrompido; execute novamente.' WHERE status='running'"
                 )
             slot = schedule_slot(datetime.now(TZ)).isoformat()
-            conn.execute("INSERT OR IGNORE INTO settings VALUES ('scheduled_slot', ?)", (slot,))
+            conn.execute("INSERT INTO settings VALUES ('scheduled_slot', %s) ON CONFLICT DO NOTHING", (slot,))
 
     @contextmanager
     def db(self):
-        with operational_db(self.runtime, "jobs", self.root) as conn:
+        with operational_db() as conn:
             yield conn
 
     def list(self) -> list[dict]:
         with self.db() as conn:
-            return [dict(x) for x in conn.execute("SELECT * FROM jobs ORDER BY created_at DESC, rowid DESC LIMIT 30")]
+            return [dict(x) for x in conn.execute("SELECT * FROM jobs ORDER BY created_at DESC, id DESC LIMIT 30")]
 
     def enqueue(self, mode: str, schedule_key: str | None = None) -> str:
         if mode not in {"generate", "sync", "sync-garmin", "sync-hevy"}:
             raise ValueError("Modo inválido")
         with self.db() as conn:
-            conn.execute("BEGIN IMMEDIATE")
+            operational_lock(conn)
             active = conn.execute("SELECT id FROM jobs WHERE status IN ('queued','running')").fetchone()
             if active:
                 raise RuntimeError("Uma atualização já está em andamento.")
             job_id = datetime.now(TZ).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
             conn.execute(
-                "INSERT INTO jobs VALUES (?, ?, 'queued', ?, NULL, 'Aguardando execução', '[]', ?)",
-                (job_id, mode, now(), schedule_key),
+                "INSERT INTO jobs VALUES (%s, %s, 'queued', %s, NULL, 'Aguardando execução', %s, %s)",
+                (job_id, mode, now(), Jsonb([]), schedule_key),
             )
             return job_id
 
     def update(self, job_id: str, status: str, message: str, warnings: builtins.list | None = None):
         with self.db() as conn:
             conn.execute(
-                "UPDATE jobs SET status=?, message=?, warnings=?, finished_at=? WHERE id=?",
+                "UPDATE jobs SET status=%s, message=%s, warnings=%s, finished_at=%s WHERE id=%s",
                 (
                     status,
                     message,
-                    json.dumps(warnings or [], ensure_ascii=False),
+                    Jsonb(warnings or []),
                     now() if status in {"completed", "partial", "failed"} else None,
                     job_id,
                 ),
@@ -110,7 +106,7 @@ class JobManager:
     def process(self, job: dict):
         with self.db() as conn:
             claimed = conn.execute(
-                "UPDATE jobs SET status='running' WHERE id=? AND status='queued' RETURNING id", (job["id"],)
+                "UPDATE jobs SET status='running' WHERE id=%s AND status='queued' RETURNING id", (job["id"],)
             ).fetchone()
         if not claimed:
             return
@@ -118,34 +114,13 @@ class JobManager:
             with process_lock(self.runtime / "update.lock"):
                 progress = lambda message: self.update(job["id"], "running", message)
                 progress("Preparando dados")
-                if postgres_enabled(self.root):
-                    from dashboard.database_pipeline import run_database_pipeline
+                from dashboard.database_pipeline import run_database_pipeline
 
-                    warnings = run_database_pipeline(job, self.root, self.runtime, progress)
-                    self.update(
-                        job["id"],
-                        "partial" if warnings else "completed",
-                        "Relatorio publicado" if not warnings else "Relatorio publicado com fontes parciais",
-                        warnings,
-                    )
-                    return
-                sources = (
-                    ("garmin",)
-                    if job["mode"] == "sync-garmin"
-                    else ("hevy",)
-                    if job["mode"] == "sync-hevy"
-                    else ("garmin", "hevy")
-                )
-                warnings = sync_sources(self.root, progress, sources) if job["mode"] != "generate" else []
-                rebuild(self.root, progress)
-                snapshot = build_snapshot(self.root)
-                snapshot["sync_warnings"] = warnings
-                progress("Gerando e validando PDF Typst")
-                publish_report(snapshot, job["id"], self.runtime, self.root)
+                warnings = run_database_pipeline(job, self.root, self.runtime, progress)
                 self.update(
                     job["id"],
                     "partial" if warnings else "completed",
-                    "Relatório publicado" if not warnings else "Relatório publicado com fontes parciais",
+                    "Relatorio publicado" if not warnings else "Relatorio publicado com fontes parciais",
                     warnings,
                 )
         except Exception as error:
@@ -165,10 +140,10 @@ class JobManager:
         if slot > previous:
             try:
                 self.enqueue("sync", schedule_key=slot)
-            except RuntimeError, sqlite3.IntegrityError:
+            except RuntimeError, psycopg.IntegrityError:
                 return
             with self.db() as conn:
-                conn.execute("UPDATE settings SET value=? WHERE key='scheduled_slot'", (slot,))
+                conn.execute("UPDATE settings SET value=%s WHERE key='scheduled_slot'", (slot,))
 
     def tick_sleep_schedule(self, current: datetime):
         if os.environ.get("DASHBOARD_SLEEP_SCHEDULE_ENABLED", "true").lower() != "true":
@@ -178,7 +153,7 @@ class JobManager:
             attempts = [
                 dict(row)
                 for row in conn.execute(
-                    "SELECT * FROM jobs WHERE schedule_key LIKE ? ORDER BY created_at DESC", (prefix + '%',)
+                    "SELECT * FROM jobs WHERE schedule_key LIKE %s ORDER BY created_at DESC", (prefix + '%',)
                 )
             ]
         if any(job['status'] in ('completed', 'queued', 'running') for job in attempts) or len(attempts) >= 3:
@@ -189,7 +164,7 @@ class JobManager:
                 return
         try:
             self.enqueue('sync-garmin', schedule_key=prefix + str(len(attempts) + 1))
-        except RuntimeError, sqlite3.IntegrityError:
+        except RuntimeError, psycopg.IntegrityError:
             return
 
     def loop(self):

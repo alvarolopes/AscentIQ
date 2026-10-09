@@ -21,12 +21,14 @@ remain unchanged. Calculated data is committed as a new revision in one
 transaction. Optimistic revision checks and advisory locks prevent lost writes.
 Repeated imports of the same content do not create duplicate records.
 
-Jobs, schedule state, and login sessions also use PostgreSQL. Existing SQLite
-records are imported without replacing the local authentication configuration.
+Jobs, schedule state, sessions, food diary, personal health memory, artifacts
+and import state live only in the PostgreSQL `operations` schema, with `jsonb`
+payloads (migration 005). Installations that still keep `runtime/*.sqlite` must
+run the previous version once to import them before upgrading.
 
 ## First migration
 
-Configure private `.env` values: `DATABASE_BACKEND=json`, `PGHOST=db`,
+Configure private `.env` values: `PGHOST=db`,
 `PGPORT=5432`, `PGDATABASE=ascentiq`, `PGUSER=ascentiq_app`, a strong `PGPASSWORD`,
 and a different strong `POSTGRES_ADMIN_PASSWORD`. Never commit these values.
 
@@ -42,7 +44,7 @@ and a different strong `POSTGRES_ADMIN_PASSWORD`. Never commit these values.
 6. Validate original JSON/dashboard/export parity before rebuilding:
    `docker compose --profile maintenance run --rm db-tools validate`.
 7. Create a database backup and test restoration in a separate temporary database.
-8. Set `DATABASE_BACKEND=postgres` and run `docker compose up -d`.
+8. Run `docker compose up -d`; the API applies pending migrations automatically (`ASCENTIQ_AUTO_MIGRATE=true`).
 
 Applied migration files are checksum-checked and must never be edited. Add a
 new numbered SQL migration for future schema changes. Re-importing stale JSON
@@ -130,10 +132,11 @@ docker compose stop api
 docker compose --profile maintenance run --rm db-tools export --output /app/runtime/dashboard/rollback-export
 ```
 
-Verify the export and copy its datasets to a separate JSON-mode deployment.
-Only then switch that deployment to `DATABASE_BACKEND=json`. Also migrate current
-operational/session records or use a new login. Do not blindly switch to the old
-JSON folder: it does not include changes committed after the migration.
+Verify the export and keep it as the rollback reference. Operational state has
+no file fallback: a rollback deployment needs the PostgreSQL database, so the
+encrypted backup must be created before the schema migration runs. Do not blindly
+switch to the old JSON folder: it does not include changes committed after the
+migration.
 
 No production volume deletion is part of this procedure. A Docker volume is
 persistent storage, not an independent backup. Never use `down -v` for recovery.

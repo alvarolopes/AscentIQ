@@ -8,10 +8,15 @@ from unittest.mock import patch
 
 from dashboard.jobs import JobManager, sleep_schedule_slot
 from dashboard.snapshot import TZ
+from dashboard.tests import pg
 from scripts.import_garmin_mcp_snapshot import extract_sleep, merge_sleep
 
 
 class SleepRetentionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def test_nested_garmin_sleep_payload_keeps_recovery_metrics(self):
         payload = {
             'sleep': {
@@ -84,7 +89,7 @@ class SleepRetentionTests(unittest.TestCase):
             self.assertEqual(len(manager.list()), 1)
             manager.update(first['id'], 'failed', 'test')
             with manager.db() as conn:
-                conn.execute('UPDATE jobs SET finished_at=? WHERE id=?', (current.isoformat(), first['id']))
+                conn.execute('UPDATE jobs SET finished_at=%s WHERE id=%s', (current.isoformat(), first['id']))
             restarted = JobManager(root / 'runtime', root)
             restarted.tick_sleep_schedule(current + timedelta(minutes=30))
             self.assertEqual(len(restarted.list()), 1)

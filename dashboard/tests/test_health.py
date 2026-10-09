@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dashboard.health import ConflictError, HealthStore, _today
+from dashboard.tests import pg
 
 
 class Diary:
@@ -49,6 +50,10 @@ class Diary:
 
 
 class HealthTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

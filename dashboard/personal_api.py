@@ -25,7 +25,7 @@ from dashboard.health import ConflictError, HealthStore
 from dashboard.imports import ImportService
 from dashboard.nutrition import validate
 from dashboard.provider_settings import ProviderSettings
-from dashboard.repository import PostgresRepository, postgres_enabled, read_files
+from dashboard.repository import PostgresRepository, datasets_in_postgres, read_files
 from dashboard.schemas import (
     AssistantRequest,
     DayReviewRequest,
@@ -595,7 +595,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
         return FileResponse(path)
 
     def export_content():
-        datasets = PostgresRepository().files()[1] if postgres_enabled(root) else read_files(root)
+        datasets = PostgresRepository().files()[1] if datasets_in_postgres(root) else read_files(root)
         content = {
             'schema_version': 1,
             'exported_at': datetime.now(UTC).isoformat(),

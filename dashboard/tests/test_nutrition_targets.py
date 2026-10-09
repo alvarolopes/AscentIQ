@@ -10,16 +10,20 @@ from unittest.mock import patch
 
 from dashboard.health import HealthStore, _active_plan, _today
 from dashboard.nutrition_targets import NutritionTargets, context_for
+from dashboard.tests import pg
 
 
 class NutritionTargetTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.env = patch.dict(
             os.environ,
             {
-                'DATABASE_BACKEND': 'json',
                 'ASCENTIQ_AI_PROVIDER': 'ollama',
                 'ASCENTIQ_AI_ENABLED': 'true',
                 'OLLAMA_MODEL': 'qwen3.5:4b',
@@ -114,12 +118,14 @@ class NutritionTargetTests(unittest.TestCase):
             self.assertEqual(infer.call_count, 2)
 
     def test_missing_profile_disabled_provider_and_paused_setting_never_call_ai(self):
-        missing = HealthStore(self.root / 'empty', self.root)
-        service = NutritionTargets(missing, lambda: {})
+        with pg.temp_database():
+            missing = HealthStore(self.root / 'empty', self.root)
+            service = NutritionTargets(missing, lambda: {})
+            with patch('dashboard.nutrition_targets.request_text') as infer:
+                service.refresh(self.day)
+                self.assertEqual(service.view(self.day)['status'], 'missing_data')
+                self.assertIsNone(service.view(self.day)['kcal'])
         with patch('dashboard.nutrition_targets.request_text') as infer:
-            service.refresh(self.day)
-            self.assertEqual(service.view(self.day)['status'], 'missing_data')
-            self.assertIsNone(service.view(self.day)['kcal'])
             with patch.dict(os.environ, {'ASCENTIQ_AI_PROVIDER': 'openai', 'OPENAI_API_KEY': 'synthetic-unused'}):
                 self.targets.refresh(self.day)
             self.assertEqual(self.targets.view(self.day)['status'], 'unavailable')

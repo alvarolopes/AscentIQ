@@ -17,14 +17,19 @@ from dashboard.repository import (
     connect,
     contents_digest,
     identity,
-    migrate,
     operational_db,
+    operational_lock,
     read_dataset,
     validate_path,
 )
+from dashboard.tests import pg
 
 
 class LocalRepositoryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def test_completed_job_cannot_be_processed_twice(self):
         from dashboard.jobs import JobManager
 
@@ -33,7 +38,7 @@ class LocalRepositoryTests(unittest.TestCase):
             manager = JobManager(root / "runtime", root)
             manager.enqueue("generate")
             job = manager.list()[0]
-            with patch("dashboard.jobs.rebuild") as rebuild, patch("dashboard.jobs.publish_report"):
+            with patch("dashboard.database_pipeline.run_database_pipeline", return_value=[]) as rebuild:
                 manager.process(job)
                 manager.process(job)
             rebuild.assert_called_once()
@@ -102,13 +107,10 @@ class LocalRepositoryTests(unittest.TestCase):
                 verify(archive, output / "recovery.key")
 
 
-@unittest.skipUnless(os.environ.get("DATABASE_TEST_ENABLED") == "1", "Disposable PostgreSQL not configured")
 class PostgresIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not os.environ.get("PGDATABASE", "").startswith("ascentiq_test_"):
-            raise RuntimeError("Integration tests refuse a non-test database")
-        migrate()
+        pg.fresh_database(cls)
 
     def fixture(self, label):
         return {
@@ -174,13 +176,12 @@ class PostgresIntegrationTests(unittest.TestCase):
         self.assertEqual(repo.active(), initial)
 
     def test_operational_queue_uses_postgres(self):
-        with patch.dict(os.environ, {"DATABASE_BACKEND": "postgres"}):
-            with operational_db(Path("unused"), "jobs") as conn:
-                conn.execute("BEGIN IMMEDIATE")
-                conn.execute("INSERT OR IGNORE INTO settings VALUES (?, ?)", ("test-setting", "1"))
-                self.assertEqual(
-                    conn.execute("SELECT value FROM settings WHERE key=?", ("test-setting",)).fetchone()[0], "1"
-                )
+        with operational_db() as conn:
+            operational_lock(conn)
+            conn.execute("INSERT INTO settings VALUES (%s, %s) ON CONFLICT DO NOTHING", ("test-setting", "1"))
+            self.assertEqual(
+                conn.execute("SELECT value FROM settings WHERE key=%s", ("test-setting",)).fetchone()[0], "1"
+            )
 
     def test_strength_sets_and_provider_link_preserved(self):
         repo = PostgresRepository()
@@ -264,14 +265,13 @@ class PostgresIntegrationTests(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
-                    "DATABASE_BACKEND": "postgres",
                     "DASHBOARD_PASSWORD": "synthetic-test",
                     "DASHBOARD_USERNAME": "athlete",
                 },
             ),
         ):
             runtime = Path(name)
-            client = TestClient(create_app(runtime))
+            client = TestClient(create_app(runtime, Path(name)))
             self.assertEqual(client.get("/api/dashboard").status_code, 401)
             response = client.post(
                 "/api/auth/login",

@@ -15,19 +15,17 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: ascentiq_app
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: synthetic-ci-password
           POSTGRES_DB: ascentiq_test_ci
         ports: [5432:5432]
         options: >-
-          --health-cmd "pg_isready -U ascentiq_app -d ascentiq_test_ci"
+          --health-cmd "pg_isready -U postgres -d ascentiq_test_ci"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_BACKEND: json
-      DATABASE_TEST_ENABLED: '1'
       PGHOST: localhost
       PGPORT: '5432'
-      PGUSER: ascentiq_app
+      PGUSER: postgres
       PGPASSWORD: synthetic-ci-password
       PGDATABASE: ascentiq_test_ci
     steps:
@@ -84,4 +82,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -f dashboard/Dockerfile -t ascentiq-report-test .
-      - run: docker run --rm --network none -e DATABASE_BACKEND=json ascentiq-report-test python -B -m unittest discover -s dashboard/tests -p test_report_first_use.py -v
+      - run: docker run --rm --network none ascentiq-report-test python -B -m unittest discover -s dashboard/tests -p test_report_first_use.py -v

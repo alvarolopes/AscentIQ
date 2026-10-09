@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
-import json
 import os
 import tempfile
 import threading
@@ -13,7 +12,9 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from dashboard.repository import operational_db, postgres_enabled
+from psycopg.types.json import Jsonb
+
+from dashboard.repository import operational_db, operational_lock
 
 _UPLOAD_LOCK = threading.RLock()
 
@@ -27,27 +28,22 @@ class Artifacts:
         self.folder.mkdir(parents=True, exist_ok=True)
         if not self.folder.resolve().is_relative_to(self.runtime.resolve()):
             raise ValueError('Pasta de documentos fora do ambiente privado.')
-        if not postgres_enabled(root):
-            with self._db() as conn:
-                conn.execute(
-                    'CREATE TABLE IF NOT EXISTS personal_artifacts (id TEXT PRIMARY KEY,payload TEXT NOT NULL)'
-                )
 
     def _db(self):
-        return operational_db(self.runtime, 'artifacts', self.root)
+        return operational_db()
 
     def read(self, kind):
         with self._db() as conn:
-            row = conn.execute('SELECT payload FROM personal_artifacts WHERE id=?', (kind,)).fetchone()
-            return json.loads(row[0]) if row else []
+            row = conn.execute('SELECT payload FROM personal_artifacts WHERE id=%s', (kind,)).fetchone()
+            return row[0] if row else []
 
     def save(self, kind, record, *, if_absent=False):
         if not isinstance(record, dict):
             raise ValueError('O registro deve ser um objeto.')
         with self._db() as conn:
-            conn.execute('BEGIN IMMEDIATE')
-            row = conn.execute('SELECT payload FROM personal_artifacts WHERE id=?', (kind,)).fetchone()
-            records = json.loads(row[0]) if row else []
+            operational_lock(conn)
+            row = conn.execute('SELECT payload FROM personal_artifacts WHERE id=%s', (kind,)).fetchone()
+            records = row[0] if row else []
             record_id = str(record.get('id') or uuid.uuid4())
             previous = next((x for x in records if x['id'] == record_id), None)
             if previous and if_absent:
@@ -62,36 +58,36 @@ class Artifacts:
             if previous:
                 revision_id = kind + ':history:' + uuid.uuid4().hex
                 conn.execute(
-                    'INSERT INTO personal_artifacts(id,payload) VALUES(?,?)',
-                    (revision_id, json.dumps(previous, ensure_ascii=False, allow_nan=False)),
+                    'INSERT INTO personal_artifacts(id,payload) VALUES(%s,%s)',
+                    (revision_id, Jsonb(previous)),
                 )
             records = [x for x in records if x['id'] != record['id']] + [record]
             conn.execute(
-                'INSERT INTO personal_artifacts(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
-                (kind, json.dumps(records, ensure_ascii=False, allow_nan=False)),
+                'INSERT INTO personal_artifacts(id,payload) VALUES(%s,%s) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
+                (kind, Jsonb(records)),
             )
         return record
 
     def remove(self, kind, record_id):
         with self._db() as conn:
-            conn.execute('BEGIN IMMEDIATE')
-            row = conn.execute('SELECT payload FROM personal_artifacts WHERE id=?', (kind,)).fetchone()
-            records = json.loads(row[0]) if row else []
+            operational_lock(conn)
+            row = conn.execute('SELECT payload FROM personal_artifacts WHERE id=%s', (kind,)).fetchone()
+            records = row[0] if row else []
             removed = [x for x in records if x['id'] == record_id]
             if removed:
                 conn.execute(
-                    'INSERT INTO personal_artifacts(id,payload) VALUES(?,?)',
-                    (kind + ':deleted:' + uuid.uuid4().hex, json.dumps(removed)),
+                    'INSERT INTO personal_artifacts(id,payload) VALUES(%s,%s)',
+                    (kind + ':deleted:' + uuid.uuid4().hex, Jsonb(removed)),
                 )
                 conn.execute(
-                    'UPDATE personal_artifacts SET payload=? WHERE id=?',
-                    (json.dumps([x for x in records if x['id'] != record_id]), kind),
+                    'UPDATE personal_artifacts SET payload=%s WHERE id=%s',
+                    (Jsonb([x for x in records if x['id'] != record_id]), kind),
                 )
         return self.read(kind)
 
     def export(self):
         with self._db() as conn:
-            return {row[0]: json.loads(row[1]) for row in conn.execute('SELECT id,payload FROM personal_artifacts')}
+            return {row[0]: row[1] for row in conn.execute('SELECT id,payload FROM personal_artifacts')}
 
     def upload_document(self, filename, content, label, day):
         with _UPLOAD_LOCK:

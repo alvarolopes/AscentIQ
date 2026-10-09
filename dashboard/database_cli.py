@@ -18,7 +18,6 @@ from dashboard.repository import (
     connect,
     contents_digest,
     document_manifest,
-    import_operations,
     migrate,
     read_files,
 )
@@ -65,7 +64,6 @@ def import_data(root):
         snapshot=build_snapshot(root),
         documents=document_manifest(root),
     )
-    import_operations(root / "runtime" / "dashboard")
     from psycopg.types.json import Jsonb
 
     with connect() as conn:
@@ -165,14 +163,13 @@ def integration_tests():
             )
         )
     try:
-        env = {**os.environ, "PGDATABASE": database, "DATABASE_TEST_ENABLED": "1", "DATABASE_BACKEND": "json"}
+        env = {**os.environ, "PGDATABASE": database}
         first_use = subprocess.run(["python", "-B", "-m", "dashboard.tests.empty_installation_smoke"], env=env)
         if first_use.returncode:
             raise RuntimeError("Empty PostgreSQL installation failed")
-        for suite in ("dashboard/tests", "tests"):
-            result = subprocess.run(["python", "-B", "-m", "unittest", "discover", "-s", suite], env=env)
-            if result.returncode:
-                raise RuntimeError("Integration tests failed: " + suite)
+        result = subprocess.run(["python", "-B", "-m", "pytest"], env=env)
+        if result.returncode:
+            raise RuntimeError("Integration tests failed")
     finally:
         with connect(**admin) as conn:
             conn.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(database)))
@@ -237,8 +234,11 @@ def main():
             raise RuntimeError("Archive and key directory are required")
         result = restore_test(args.archive, args.output)
     elif args.command == "replace":
+        from psycopg.types.json import Jsonb
+
         from dashboard.database_pipeline import run_database_pipeline
         from dashboard.jobs import JobManager, now
+        from dashboard.repository import operational_lock
 
         if not args.dataset or args.input is None:
             raise RuntimeError("A reviewed dataset and input JSON are required")
@@ -248,12 +248,12 @@ def main():
         manager = JobManager(runtime, args.root, recover_interrupted=False)
         key = datetime.now(TZ).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
         with manager.db() as conn:
-            conn.execute("BEGIN IMMEDIATE")
+            operational_lock(conn)
             if conn.execute("SELECT id FROM jobs WHERE status IN ('queued','running')").fetchone():
                 raise RuntimeError("An update is already in progress")
             conn.execute(
-                "INSERT INTO jobs VALUES (?, ?, 'running', ?, NULL, 'Atualizacao manual revisada', '[]', NULL)",
-                (key, "manual-" + args.dataset, now()),
+                "INSERT INTO jobs VALUES (%s, %s, 'running', %s, NULL, 'Atualizacao manual revisada', %s, NULL)",
+                (key, "manual-" + args.dataset, now(), Jsonb([])),
             )
         try:
             warnings = run_database_pipeline(

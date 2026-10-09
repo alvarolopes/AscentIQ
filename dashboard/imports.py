@@ -21,7 +21,9 @@ from collections import Counter
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from dashboard.repository import operational_db, read_dataset
+from psycopg.types.json import Jsonb
+
+from dashboard.repository import operational_db, operational_lock, read_dataset
 
 MAX_BYTES = 12 * 1024 * 1024
 MAX_ROWS = 10000
@@ -306,10 +308,6 @@ class ImportService:
         self.originals.mkdir(parents=True, exist_ok=True)
         if not self.originals.resolve().is_relative_to(self.runtime.resolve()):
             raise ValueError("Diretório de originais fora do ambiente privado.")
-        with operational_db(self.runtime, "imports", self.root) as conn:
-            conn.execute(
-                "CREATE TABLE IF NOT EXISTS personal_imports_state (id TEXT PRIMARY KEY, payload TEXT NOT NULL)"
-            )
 
     @staticmethod
     def _empty():
@@ -324,19 +322,19 @@ class ImportService:
         }
 
     def _load(self, conn):
-        row = conn.execute("SELECT payload FROM personal_imports_state WHERE id=?", ("state",)).fetchone()
-        return json.loads(row[0]) if row else self._empty()
+        row = conn.execute("SELECT payload FROM personal_imports_state WHERE id=%s", ("state",)).fetchone()
+        return row[0] if row else self._empty()
 
     def _save(self, conn, state, event):
         state["revision"] += 1
         event = {**event, "revision": state["revision"], "recorded_at": _now()}
         conn.execute(
-            "INSERT INTO personal_imports_state(id,payload) VALUES(?,?)",
-            (f"revision:{state['revision']:010d}", _canonical(event)),
+            "INSERT INTO personal_imports_state(id,payload) VALUES(%s,%s)",
+            (f"revision:{state['revision']:010d}", Jsonb(event)),
         )
         conn.execute(
-            "INSERT INTO personal_imports_state(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
-            ("state", _canonical(state)),
+            "INSERT INTO personal_imports_state(id,payload) VALUES(%s,%s) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
+            ("state", Jsonb(state)),
         )
 
     def _legacy(self):
@@ -391,8 +389,8 @@ class ImportService:
             raise ValueError("Arquivo vazio ou acima do limite de tamanho.")
         digest = hashlib.sha256(raw).hexdigest()
         import_id = _uid(format + ":" + digest)
-        with operational_db(self.runtime, "imports", self.root) as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with operational_db() as conn:
+            operational_lock(conn)
             state = self._load(conn)
             prior = next((item for item in state["imports"] if item["id"] == import_id), None)
             if prior:
@@ -564,7 +562,7 @@ class ImportService:
         }
 
     def read(self):
-        with operational_db(self.runtime, "imports", self.root) as conn:
+        with operational_db() as conn:
             state = self._load(conn)
         return self._view(state)
 
@@ -572,8 +570,8 @@ class ImportService:
         action = {"link": "merge", "unmerge": "unlink"}.get(action, action)
         if action not in {"merge", "unlink", "keep"}:
             raise ValueError("Ação deve ser merge, unlink ou keep.")
-        with operational_db(self.runtime, "imports", self.root) as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with operational_db() as conn:
+            operational_lock(conn)
             state = self._load(conn)
             ids = set(state["records"]) | set(self._legacy())
             if record_id not in ids or (other_id is not None and other_id not in ids):

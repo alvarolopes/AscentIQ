@@ -65,7 +65,7 @@ class RevisionCacheTests(unittest.TestCase):
         revision = uuid.uuid4()
         raw = b'{"a": 1}'
         with (
-            patch("dashboard.repository.postgres_enabled", return_value=True),
+            patch("dashboard.repository.datasets_in_postgres", return_value=True),
             patch.object(PostgresRepository, "files", return_value=(revision, {"data/x.json": raw})),
         ):
             parsed = FILES_CACHE.parsed(revision, "data/x.json", raw)
@@ -85,8 +85,8 @@ class RevisionCacheTests(unittest.TestCase):
             return {"as_of": today.isoformat(), "nested": {"items": []}}
 
         with (
-            patch("dashboard.repository.postgres_enabled", return_value=True),
-            patch("dashboard.snapshot.postgres_enabled", return_value=True),
+            patch("dashboard.repository.datasets_in_postgres", return_value=True),
+            patch("dashboard.snapshot.datasets_in_postgres", return_value=True),
             patch.object(PostgresRepository, "files", return_value=(revision, {})),
             patch("dashboard.snapshot.revision_metadata", return_value=None),
             patch.object(snapshot_module, "_build_snapshot", side_effect=counting),

@@ -18,6 +18,10 @@ Verify the Python backend in `dashboard/` the same way `.github/workflows/platfo
 Environment: use the project venv at `.venv/Scripts/python.exe` (create with
 `py -3.14 -m venv .venv` and `pip install -r dashboard/requirements-dev.txt` if missing).
 Always set `PYTHONUTF8=1`. Run from the repository root.
+Tests require a disposable PostgreSQL with `CREATEDB` (tests create one database per
+class from a migrated template): `PGHOST=localhost PGPORT=5433 PGUSER=postgres
+PGPASSWORD=synthetic-local-password PGDATABASE=ascentiq_test_local` against a
+throwaway `postgres:17` container (`ascentiq-test-db`).
 
 Run, in order, and stop at the first failure:
 

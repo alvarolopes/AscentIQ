@@ -8,7 +8,9 @@ import math
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from dashboard.repository import operational_db, postgres_enabled
+from psycopg.types.json import Jsonb
+
+from dashboard.repository import operational_db, operational_lock
 
 FIELDS = ('kcal', 'protein_g', 'carbs_g', 'fat_g')
 
@@ -19,19 +21,14 @@ class FoodDiary:
         self.root = Path(root) if root is not None else self.runtime
         self.folder = self.runtime / 'food-diary'
         self.folder.mkdir(parents=True, exist_ok=True)
-        if not postgres_enabled(self.root):
-            with self._db() as conn:
-                conn.execute(
-                    'CREATE TABLE IF NOT EXISTS food_diary_state (day TEXT PRIMARY KEY, payload TEXT NOT NULL)'
-                )
 
     def _db(self):
-        return operational_db(self.runtime, 'food', self.root)
+        return operational_db()
 
     def _load(self, conn, day):
-        row = conn.execute('SELECT payload FROM food_diary_state WHERE day=?', (day.isoformat(),)).fetchone()
+        row = conn.execute('SELECT payload FROM food_diary_state WHERE day=%s', (day.isoformat(),)).fetchone()
         if row:
-            return json.loads(row[0])
+            return row[0]
         return self._legacy(day)
 
     def _legacy(self, day):
@@ -122,18 +119,11 @@ class FoodDiary:
         if not days:
             return {}
         with self._db() as conn:
-            if postgres_enabled(self.root):
-                rows = conn.execute(
-                    'SELECT day,payload FROM food_diary_state WHERE day = ANY(%s)',
-                    ([selected.isoformat() for selected in days],),
-                ).fetchall()
-            else:
-                marks = ','.join('?' for _ in days)
-                rows = conn.execute(
-                    f'SELECT day,payload FROM food_diary_state WHERE day IN ({marks})',
-                    tuple(selected.isoformat() for selected in days),
-                ).fetchall()
-            stored = {row['day']: json.loads(row['payload']) for row in rows}
+            rows = conn.execute(
+                'SELECT day,payload FROM food_diary_state WHERE day = ANY(%s)',
+                ([selected.isoformat() for selected in days],),
+            ).fetchall()
+            stored = {row['day']: row['payload'] for row in rows}
             key = lambda selected: selected.isoformat()
             return {
                 selected: self._view(
@@ -170,7 +160,7 @@ class FoodDiary:
         if not isinstance(fasting_declared, bool):
             raise ValueError('Jejum declarado deve ser verdadeiro ou falso.')
         with self._db() as conn:
-            conn.execute('BEGIN IMMEDIATE')
+            operational_lock(conn)
             state = self._load(conn, day)
             if entry is not None:
                 present = next((x for x in state['entries'] if x['id'] == entry['id']), None)
@@ -233,8 +223,8 @@ class FoodDiary:
             ]
             state['revision'] = old.get('revision', 0) + 1
             conn.execute(
-                'INSERT INTO food_diary_state(day,payload) VALUES(?,?) ON CONFLICT(day) DO UPDATE SET payload=excluded.payload',
-                (day.isoformat(), json.dumps(state, ensure_ascii=False, allow_nan=False)),
+                'INSERT INTO food_diary_state(day,payload) VALUES(%s,%s) ON CONFLICT(day) DO UPDATE SET payload=excluded.payload',
+                (day.isoformat(), Jsonb(state)),
             )
             return self._view(day, state)
 

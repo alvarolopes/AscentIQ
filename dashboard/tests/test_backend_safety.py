@@ -14,9 +14,14 @@ from dashboard.assistant import answer
 from dashboard.food_store import FoodDiary
 from dashboard.pipeline import rebuild
 from dashboard.provider_settings import ProviderSettings
+from dashboard.tests import pg
 
 
 class BackendSafetyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

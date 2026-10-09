@@ -10,13 +10,19 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+import dashboard.repository as repository
 from dashboard.jobs import JobManager, schedule_slot
 from dashboard.pipeline import chart_svg, publish_report, sync_sources, training_snapshot
 from dashboard.server import create_app
 from dashboard.snapshot import TZ, activity_kind, build_snapshot, medical_documents, seconds
+from dashboard.tests import pg
 
 
 class Fixture(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -225,6 +231,13 @@ class ApiTests(Fixture):
             folder.mkdir(parents=True)
             (folder / "meta.json").write_text(json.dumps(meta))
             (folder / "report.pdf").write_bytes(b"%PDF-1.7 test")
+            from psycopg.types.json import Jsonb
+
+            with repository.connect() as conn:
+                conn.execute(
+                    "INSERT INTO athlete.reports(id, metadata) VALUES(%s, %s)",
+                    (key, Jsonb(meta)),
+                )
         self.login()
         self.assertEqual(
             [item["id"] for item in self.client.get("/api/reports").json()["reports"]], ["training-report"]

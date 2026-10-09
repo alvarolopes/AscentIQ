@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import os
 import struct
 import tempfile
 import unittest
@@ -15,6 +14,7 @@ from unittest.mock import patch
 
 from dashboard.imports import ImportService
 from dashboard.repository import operational_db
+from dashboard.tests import pg
 from scripts.fetch_garmin_mcp_snapshot import extract_activity_ids, fetch_all_activities, filter_known_activities
 from scripts.import_garmin_mcp_snapshot import (
     extract_activities,
@@ -55,6 +55,10 @@ def synthetic_fit():
 
 
 class ImportTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -89,8 +93,8 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(row["field_observation_sources"]["calories"]["import_id"], first["import"]["id"])
         self.assertEqual(row["field_observation_sources"]["avg_hr"]["import_id"], second["import"]["id"])
         self.assertEqual(second["revision"], 2)
-        with operational_db(self.runtime, "imports", self.root) as conn:
-            count = conn.execute("SELECT count(*) FROM personal_imports_state WHERE id != ?", ("state",)).fetchone()[0]
+        with operational_db() as conn:
+            count = conn.execute("SELECT count(*) FROM personal_imports_state WHERE id != %s", ("state",)).fetchone()[0]
         self.assertEqual(count, 2)
 
     def test_missing_optional_numeric_values_are_unknown(self):
@@ -447,19 +451,20 @@ class GarminImportTests(unittest.TestCase):
         )
 
 
-@unittest.skipUnless(os.environ.get("DATABASE_TEST_ENABLED") == "1", "Disposable PostgreSQL not configured")
 class PostgresImportTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def test_operational_imports_and_reconciliation_use_postgres(self):
         import uuid
 
-        from dashboard.repository import ROOT, migrate
+        from dashboard.repository import ROOT
 
         with (
             tempfile.TemporaryDirectory() as temp,
-            patch.dict(os.environ, {"DATABASE_BACKEND": "postgres"}),
             patch("dashboard.imports.read_dataset", return_value=[]),
         ):
-            migrate()
             runtime = Path(temp)
             service = ImportService(runtime, ROOT)
             identifier = uuid.uuid4().hex
@@ -476,9 +481,9 @@ class PostgresImportTests(unittest.TestCase):
             self.assertEqual(set(selected["linked_record_ids"]), {a, b})
             self.assertEqual(selected["calories"], 450)
             self.assertFalse((runtime / "imports.sqlite").exists())
-            with operational_db(runtime, "imports", ROOT) as conn:
-                record = conn.execute("SELECT payload FROM personal_imports_state WHERE id=?", ("state",)).fetchone()
-                self.assertEqual(json.loads(record[0])["revision"], merged["revision"])
+            with operational_db() as conn:
+                record = conn.execute("SELECT payload FROM personal_imports_state WHERE id=%s", ("state",)).fetchone()
+                self.assertEqual(record[0]["revision"], merged["revision"])
             restored = service.reconcile(a, "unlink", b)
             self.assertTrue(any(row["id"] == b for row in restored["records"]))
 

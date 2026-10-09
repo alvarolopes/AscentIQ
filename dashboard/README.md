@@ -6,7 +6,7 @@ O frontend oficial está em `dashboard/web`, com React, Next.js App Router, Tail
 
 ## Instalação vazia
 
-Copie `.env.example` para `.env`. Configure senhas diferentes em `PGPASSWORD` e `POSTGRES_ADMIN_PASSWORD`; mantenha `DATABASE_BACKEND=postgres`. Não publique esse arquivo. Docker Desktop deve estar em execução.
+Copie `.env.example` para `.env`. Configure senhas diferentes em `PGPASSWORD` e `POSTGRES_ADMIN_PASSWORD`. Não publique esse arquivo. Docker Desktop deve estar em execução.
 
 ```powershell
 docker compose build api frontend web

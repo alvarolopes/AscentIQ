@@ -4,9 +4,14 @@ from datetime import date
 from pathlib import Path
 
 from dashboard.nutrition import FoodDiary, validate
+from dashboard.tests import pg
 
 
 class FoodTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def test_roundtrip_totals_retry_and_remove(self):
         with tempfile.TemporaryDirectory() as folder:
             diary = FoodDiary(Path(folder))

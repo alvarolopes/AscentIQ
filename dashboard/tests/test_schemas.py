@@ -14,9 +14,14 @@ from fastapi.testclient import TestClient
 
 from dashboard.server import create_app
 from dashboard.snapshot import TZ
+from dashboard.tests import pg
 
 
 class SchemaValidationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -27,7 +32,6 @@ class SchemaValidationTests(unittest.TestCase):
         self.env = patch.dict(
             os.environ,
             {
-                "DATABASE_BACKEND": "json",
                 "DASHBOARD_USERNAME": "tester",
                 "DASHBOARD_PASSWORD": "synthetic-login-password",
                 "DASHBOARD_SCHEDULE_ENABLED": "false",

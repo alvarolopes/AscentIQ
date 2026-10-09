@@ -25,11 +25,10 @@ As suítes usam arquivos/SQLite temporários e PostgreSQL descartável. Testes d
 Os comandos reproduzíveis são:
 
 ```text
-python -B -m unittest discover -s tests -v
-python -B -m unittest discover -s dashboard/tests -v
+python -B -m pytest dashboard/tests tests -q
 ```
 
-O ambiente deve ter as dependências de projeto/dashboard. Para PostgreSQL, configurar um banco **descartável** e `DATABASE_TEST_ENABLED=1` conforme os testes de repositório; nunca apontar a suíte de integração para a base pessoal de produção. O build de frontend e a revisão visual são evidências separadas da suíte Python.
+O ambiente deve ter as dependências de projeto/dashboard. Os testes exigem um PostgreSQL **descartável** via `PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE` (o `PGDATABASE` precisa começar com `ascentiq_test_` e o usuário precisa de `CREATEDB`); nunca apontar a suíte de integração para a base pessoal de produção. O build de frontend e a revisão visual são evidências separadas da suíte Python.
 
 ## Mapa dos requisitos funcionais
 

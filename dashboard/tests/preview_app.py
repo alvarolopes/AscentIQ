@@ -13,7 +13,6 @@ from starlette.staticfiles import StaticFiles
 from dashboard.server import create_app
 
 os.environ.update(
-    DATABASE_BACKEND="json",
     DASHBOARD_USERNAME="tester",
     DASHBOARD_PASSWORD="synthetic-login-password",
     DASHBOARD_SCHEDULE_ENABLED="false",

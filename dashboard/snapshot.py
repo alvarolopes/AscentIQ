@@ -13,7 +13,7 @@ from dashboard.repository import (
     REVISION,
     SNAPSHOT_CACHE,
     dataset_bytes,
-    postgres_enabled,
+    datasets_in_postgres,
     read_dataset,
     repository_context,
     revision_metadata,
@@ -158,7 +158,7 @@ def medical_documents(root: Path) -> dict[str, Path]:
 
 def build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
     today = today or datetime.now(TZ).date()
-    if postgres_enabled(root):
+    if datasets_in_postgres(root):
         with repository_context(root):
             revision = REVISION.get()
         snapshot = SNAPSHOT_CACHE.get((revision, today), lambda: _load_snapshot(root, today))

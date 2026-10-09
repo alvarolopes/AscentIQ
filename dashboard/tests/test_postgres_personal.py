@@ -5,7 +5,6 @@ deletion is performed. The maintenance runner owns disposable database cleanup.
 """
 
 import json
-import os
 import tempfile
 import unittest
 import uuid
@@ -14,24 +13,23 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
+import psycopg
+from psycopg.types.json import Jsonb
+
 from dashboard import repository
 from dashboard.artifacts import Artifacts
 from dashboard.food_store import FoodDiary
 from dashboard.health import ConflictError, HealthStore
 from dashboard.imports import ImportService
+from dashboard.tests import pg
 
 
-@unittest.skipUnless(os.environ.get("DATABASE_TEST_ENABLED") == "1", "Disposable PostgreSQL not configured")
 class PostgresPersonalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not os.environ.get("PGDATABASE", "").startswith("ascentiq_test_"):
-            raise RuntimeError("Personal integration tests refuse a non-test database")
-        repository.migrate()
+        pg.fresh_database(cls)
 
     def setUp(self):
-        self.env = patch.dict(os.environ, {"DATABASE_BACKEND": "postgres"})
-        self.env.start()
         self.temp = tempfile.TemporaryDirectory()
         self.runtime = Path(self.temp.name)
         self.root = repository.ROOT
@@ -45,7 +43,6 @@ class PostgresPersonalTests(unittest.TestCase):
         self.health = HealthStore(self.runtime, self.root)
 
     def tearDown(self):
-        self.env.stop()
         self.temp.cleanup()
 
     def publish_synthetic(self):
@@ -113,14 +110,14 @@ class PostgresPersonalTests(unittest.TestCase):
             answers = list(pool.map(client, (self.prefix + "-A", self.prefix + "-B")))
         self.assertEqual(sum(answer is not None for answer in answers), 1)
         stable = self.health.read()
-        original_execute = repository.OperationalConnection.execute
+        original_execute = psycopg.Connection.execute
 
-        def fail_during_state_publish(connection, query, values=()):
-            if query.startswith("UPDATE personal_health_state SET"):
+        def fail_during_state_publish(connection, query, *args, **kwargs):
+            if isinstance(query, str) and query.startswith("UPDATE personal_health_state SET"):
                 raise RuntimeError("synthetic transaction failure after revision insertion")
-            return original_execute(connection, query, values)
+            return original_execute(connection, query, *args, **kwargs)
 
-        with patch.object(repository.OperationalConnection, "execute", fail_during_state_publish):
+        with patch.object(psycopg.Connection, "execute", fail_during_state_publish):
             with self.assertRaises(RuntimeError):
                 self.health.save(
                     "checkins", {"id": self.prefix + "-rolled-back", "date": self.day.isoformat(), "fatigue": 4}
@@ -164,13 +161,13 @@ class PostgresPersonalTests(unittest.TestCase):
         )
         abort_key = self.prefix + "-abort"
         with self.assertRaises(RuntimeError):
-            with repository.operational_db(self.runtime, "artifacts", self.root) as conn:
-                conn.execute("BEGIN IMMEDIATE")
-                conn.execute("INSERT INTO personal_artifacts(id,payload) VALUES(?,?)", (abort_key, "[]"))
+            with repository.operational_db() as conn:
+                repository.operational_lock(conn)
+                conn.execute("INSERT INTO personal_artifacts(id,payload) VALUES(%s,%s)", (abort_key, Jsonb([])))
                 raise RuntimeError("synthetic abort")
-        with repository.operational_db(self.runtime, "artifacts", self.root) as conn:
+        with repository.operational_db() as conn:
             self.assertIsNone(
-                conn.execute("SELECT payload FROM personal_artifacts WHERE id=?", (abort_key,)).fetchone()
+                conn.execute("SELECT payload FROM personal_artifacts WHERE id=%s", (abort_key,)).fetchone()
             )
         for name in ("health", "food", "artifacts", "imports"):
             self.assertFalse((self.runtime / (name + ".sqlite")).exists())

@@ -1,7 +1,6 @@
 """Clock, coverage and privacy regressions for synthetic daily coaching context."""
 
 import json
-import os
 import tempfile
 import unittest
 from datetime import date, datetime
@@ -12,14 +11,17 @@ from zoneinfo import ZoneInfo
 from dashboard.day_review import SECTIONS, interpretation_context, prepare, render_response
 from dashboard.food_store import FoodDiary
 from dashboard.health import HealthStore
+from dashboard.tests import pg
 
 
 class DayReviewTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.env = patch.dict(os.environ, {'DATABASE_BACKEND': 'json'})
-        self.env.start()
         self.day = date(2026, 10, 5)
         self.now = datetime(2026, 10, 5, 20, 15, tzinfo=ZoneInfo('America/Sao_Paulo'))
         self.health = HealthStore(self.root / 'runtime', self.root)
@@ -78,7 +80,6 @@ class DayReviewTests(unittest.TestCase):
         }
 
     def tearDown(self):
-        self.env.stop()
         self.temp.cleanup()
 
     def prepare(self, **kwargs):

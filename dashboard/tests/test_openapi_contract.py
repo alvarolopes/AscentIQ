@@ -1,19 +1,23 @@
 """The versioned OpenAPI contract must match the generated snapshot."""
 
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+
+from dashboard.tests import pg
 
 
 class OpenApiContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def test_openapi_snapshot_is_current(self):
-        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {"DATABASE_BACKEND": "json"}):
+        with tempfile.TemporaryDirectory() as folder:
             from dashboard.server import create_app
 
-            spec = create_app(Path(folder)).openapi()
+            spec = create_app(Path(folder), Path(folder)).openapi()
         target = Path(__file__).resolve().parents[1] / "openapi.json"
         self.assertTrue(target.is_file(), "dashboard/openapi.json missing; run python -m dashboard.openapi_export")
         self.assertEqual(

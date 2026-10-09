@@ -11,16 +11,20 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from dashboard.server import create_app
+from dashboard.tests import pg
 
 
 class ExportArchiveTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def test_explicit_attachments_and_no_credentials(self):
         with (
             tempfile.TemporaryDirectory() as folder,
             patch.dict(
                 os.environ,
                 {
-                    'DATABASE_BACKEND': 'json',
                     'DASHBOARD_USERNAME': 'tester',
                     'DASHBOARD_PASSWORD': 'synthetic',
                     'DASHBOARD_SCHEDULE_ENABLED': 'false',

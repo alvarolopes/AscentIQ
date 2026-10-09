@@ -6,7 +6,6 @@ import copy
 import hashlib
 import json
 import os
-import sqlite3
 import threading
 import uuid
 from contextlib import contextmanager
@@ -63,8 +62,8 @@ FILES_CACHE = RevisionCache()
 SNAPSHOT_CACHE = RevisionCache()
 
 
-def postgres_enabled(root=ROOT):
-    return Path(root).resolve() == ROOT.resolve() and os.environ.get("DATABASE_BACKEND", "json") == "postgres"
+def datasets_in_postgres(root=ROOT):
+    return Path(root).resolve() == ROOT.resolve()
 
 
 def connect(**kwargs):
@@ -134,14 +133,14 @@ def migrate():
     with connect() as conn:
         conn.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_ID,))
         conn.execute("CREATE SCHEMA IF NOT EXISTS athlete")
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS athlete.schema_migrations(version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz DEFAULT now())"
-        )
         for path in sorted((Path(__file__).parent / "migrations").glob("*.sql")):
             checksum = hashlib.sha256(path.read_bytes()).hexdigest()
-            prior = conn.execute(
-                "SELECT checksum FROM athlete.schema_migrations WHERE version=%s", (path.name,)
-            ).fetchone()
+            has_table = conn.execute("SELECT to_regclass('athlete.schema_migrations')").fetchone()[0]
+            prior = (
+                conn.execute("SELECT checksum FROM athlete.schema_migrations WHERE version=%s", (path.name,)).fetchone()
+                if has_table
+                else None
+            )
             if prior:
                 if prior[0] != checksum:
                     raise RuntimeError("Applied migration checksum changed")
@@ -422,7 +421,7 @@ class PostgresRepository:
 
 @contextmanager
 def repository_context(root):
-    if postgres_enabled(root):
+    if datasets_in_postgres(root):
         revision, files = PostgresRepository().files()
         token = CURRENT.set(files)
         revision_token = REVISION.set(revision)
@@ -447,7 +446,7 @@ def revision_metadata():
 def read_dataset(root, path, default=None):
     files = CURRENT.get()
     revision = REVISION.get()
-    if files is None and postgres_enabled(root):
+    if files is None and datasets_in_postgres(root):
         revision, files = PostgresRepository().files()
     if files is not None:
         raw = files.get(path)
@@ -479,56 +478,19 @@ def row_factory(cursor):
     return lambda values: HybridRow(zip(names, values))
 
 
-class OperationalConnection:
-    def __init__(self, conn):
-        self.conn = conn
-
-    def execute(self, query, values=()):
-        if query == "BEGIN IMMEDIATE":
-            return self.conn.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_ID + 1,))
-        if query.startswith("INSERT OR IGNORE"):
-            query = query.replace("INSERT OR IGNORE", "INSERT", 1) + " ON CONFLICT DO NOTHING"
-        query = (
-            query.replace("?", "%s")
-            .replace("rowid DESC", "id DESC")
-            .replace("expires REAL", "expires double precision")
-        )
-        return self.conn.execute(query, values)
-
-
 @contextmanager
-def operational_db(runtime, name, root=ROOT):
-    if postgres_enabled(root):
-        with connect(row_factory=row_factory) as conn:
-            conn.execute("SET search_path TO operations,public")
-            yield OperationalConnection(conn)
-    else:
-        conn = sqlite3.connect(Path(runtime) / f"{name}.sqlite", timeout=15)
-        conn.row_factory = sqlite3.Row
-        try:
-            with conn:
-                yield conn
-        finally:
-            conn.close()
-
-
-def import_operations(runtime):
+def operational_db():
     from psycopg import sql
 
-    with connect() as conn:
-        for file, table in (("jobs", "jobs"), ("jobs", "settings"), ("sessions", "sessions")):
-            path = runtime / f"{file}.sqlite"
-            if not path.exists():
-                continue
-            local = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
-            try:
-                for row in local.execute(f"SELECT * FROM {table}"):
-                    query = sql.SQL("INSERT INTO operations.{} VALUES ({}) ON CONFLICT DO NOTHING").format(
-                        sql.Identifier(table), sql.SQL(",").join(sql.Placeholder() for _ in row)
-                    )
-                    conn.execute(query, row)
-            finally:
-                local.close()
+    schema = os.environ.get("ASCENTIQ_OPERATIONS_SCHEMA", "operations")
+    with connect(row_factory=row_factory) as conn:
+        conn.execute(sql.SQL("SET search_path TO {},public").format(sql.Identifier(schema)))
+        yield conn
+
+
+def operational_lock(conn):
+    """Serialize writers on a dedicated advisory lock inside the transaction."""
+    conn.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_ID + 1,))
 
 
 def document_manifest(root):

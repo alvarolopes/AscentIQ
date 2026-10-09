@@ -12,9 +12,14 @@ from dashboard.artifacts import Artifacts
 from dashboard.food_store import FoodDiary
 from dashboard.nutrition import validate
 from dashboard.provider_settings import ProviderSettings
+from dashboard.tests import pg
 
 
 class ProductSupportTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

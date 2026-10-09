@@ -16,6 +16,7 @@ from dashboard.assistant import (
     personal_period,
     prepare_personal,
 )
+from dashboard.tests import pg
 
 
 class Diary:
@@ -50,6 +51,10 @@ def metric(summary, name):
 
 
 class AssistantContextTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def prepared(self, scope=None):
         return {
             'fingerprint': 'synthetic',

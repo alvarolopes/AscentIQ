@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from dashboard.daily_analysis import DailyReports, configuration, prepare
 from dashboard.jobs import JobManager
 from dashboard.nutrition import FoodDiary, estimate, prompt, validate
-from dashboard.repository import connect, operational_db, postgres_enabled
+from dashboard.repository import connect, migrate, operational_db
 from dashboard.snapshot import ROOT, build_snapshot, medical_documents
 
 RUNTIME = Path(os.environ.get("DASHBOARD_RUNTIME", str(ROOT / "runtime" / "dashboard")))
@@ -104,6 +104,8 @@ def validation_detail(error):
 
 def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     runtime.mkdir(parents=True, exist_ok=True)
+    if os.environ.get("ASCENTIQ_AUTO_MIGRATE", "false").lower() == "true":
+        migrate()
     auth_path = runtime / "auth.json"
     if not auth_path.exists():
         password = os.environ.get("DASHBOARD_PASSWORD") or secrets.token_urlsafe(18)
@@ -128,11 +130,9 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @contextmanager
     def sessions():
-        with operational_db(runtime, "sessions", root) as conn:
+        with operational_db() as conn:
             yield conn
 
-    with sessions() as conn:
-        conn.execute("CREATE TABLE IF NOT EXISTS sessions (digest TEXT PRIMARY KEY, expires REAL)")
     manager = JobManager(runtime, root)
     daily_reports = DailyReports(runtime)
     food_diary = FoodDiary(runtime, root)
@@ -175,7 +175,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
             token = request.cookies.get(COOKIE, "")
             with sessions() as conn:
                 row = conn.execute(
-                    "SELECT expires FROM sessions WHERE digest=?", (hashlib.sha256(token.encode()).hexdigest(),)
+                    "SELECT expires FROM sessions WHERE digest=%s", (hashlib.sha256(token.encode()).hexdigest(),)
                 ).fetchone()
             if not token or not row or row[0] <= time.time():
                 return Response(status_code=401)
@@ -187,9 +187,8 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        if postgres_enabled(root):
-            with connect() as conn:
-                conn.execute("SELECT 1")
+        with connect() as conn:
+            conn.execute("SELECT 1")
         return {"status": "ok"}
 
     @app.post("/api/auth/login")
@@ -204,9 +203,9 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
             raise HTTPException(401, "Usuário ou senha incorretos.")
         token = secrets.token_urlsafe(32)
         with sessions() as conn:
-            conn.execute("DELETE FROM sessions WHERE expires < ?", (time.time(),))
+            conn.execute("DELETE FROM sessions WHERE expires < %s", (time.time(),))
             conn.execute(
-                "INSERT INTO sessions VALUES (?, ?)",
+                "INSERT INTO sessions VALUES (%s, %s)",
                 (hashlib.sha256(token.encode()).hexdigest(), time.time() + 86400 * 7),
             )
         response.set_cookie(
@@ -228,7 +227,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     def logout(request: Request, response: Response):
         with sessions() as conn:
             conn.execute(
-                "DELETE FROM sessions WHERE digest=?",
+                "DELETE FROM sessions WHERE digest=%s",
                 (hashlib.sha256(request.cookies.get(COOKIE, "").encode()).hexdigest(),),
             )
         response.delete_cookie(COOKIE, path="/")
@@ -403,25 +402,19 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @app.get("/api/reports")
     def reports():
-        if postgres_enabled(root):
-            with connect() as conn:
-                items = [
-                    row[0]
-                    for row in conn.execute("SELECT metadata FROM athlete.reports ORDER BY created_at DESC,id DESC")
-                ]
-            return {"reports": [item for item in items if item.get("pdf_scope") == "training"]}
-        paths = sorted((runtime / "reports").glob("*/meta.json"), reverse=True)
-        items = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
+        with connect() as conn:
+            items = [
+                row[0] for row in conn.execute("SELECT metadata FROM athlete.reports ORDER BY created_at DESC,id DESC")
+            ]
         return {"reports": [item for item in items if item.get("pdf_scope") == "training"]}
 
     @app.get("/api/reports/{report_id}/pdf")
     def report_pdf(report_id: str):
         if not all(c.isalnum() or c == "-" for c in report_id):
             raise HTTPException(404)
-        if postgres_enabled(root):
-            with connect() as conn:
-                if not conn.execute("SELECT 1 FROM athlete.reports WHERE id=%s", (report_id,)).fetchone():
-                    raise HTTPException(404)
+        with connect() as conn:
+            if not conn.execute("SELECT 1 FROM athlete.reports WHERE id=%s", (report_id,)).fetchone():
+                raise HTTPException(404)
         path = runtime / "reports" / report_id / "report.pdf"
         meta = path.parent / "meta.json"
         if (
@@ -436,10 +429,9 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     def report_html(report_id: str):
         if not all(c.isalnum() or c == "-" for c in report_id):
             raise HTTPException(404)
-        if postgres_enabled(root):
-            with connect() as conn:
-                if not conn.execute("SELECT 1 FROM athlete.reports WHERE id=%s", (report_id,)).fetchone():
-                    raise HTTPException(404)
+        with connect() as conn:
+            if not conn.execute("SELECT 1 FROM athlete.reports WHERE id=%s", (report_id,)).fetchone():
+                raise HTTPException(404)
         path = runtime / "reports" / report_id / "dashboard.html"
         if not path.is_file():
             raise HTTPException(404)

@@ -1,8 +1,8 @@
 """User-reviewed health memory and transparent, versioned energy/goal calculations.
 
-No provider calls or LLM calls occur here. SQLite supports isolated installations
-and tests; the existing operational database adapter uses PostgreSQL in production.
-All writes, including plan decisions, publish an immutable state revision.
+No provider calls or LLM calls occur here. Operational state lives in the
+PostgreSQL `operations` schema. All writes, including plan decisions, publish an
+immutable state revision.
 """
 
 from __future__ import annotations
@@ -17,7 +17,9 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from dashboard.repository import operational_db, postgres_enabled, read_dataset
+from psycopg.types.json import Jsonb
+
+from dashboard.repository import operational_db, operational_lock, read_dataset
 
 MODEL_VERSION = "personal_energy_mifflin_v1"
 POLICY_VERSION = "conservative_trend_v1"
@@ -756,37 +758,30 @@ class HealthStore:
     def __init__(self, runtime: Path, root: Path):
         self.runtime, self.root = Path(runtime), Path(root)
         self.runtime.mkdir(parents=True, exist_ok=True)
-        with operational_db(self.runtime, "health", self.root) as conn:
-            if not postgres_enabled(self.root):
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS personal_health_state(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,payload TEXT NOT NULL,updated_at TEXT NOT NULL)"
-                )
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS personal_health_revisions(revision INTEGER PRIMARY KEY,payload TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL)"
-                )
-            conn.execute("BEGIN IMMEDIATE")
-            raw, stamp = _json(_empty()), _stamp()
+        with operational_db() as conn:
+            operational_lock(conn)
+            raw, stamp = _empty(), _stamp()
             conn.execute(
-                "INSERT OR IGNORE INTO personal_health_state(id,revision,payload,updated_at) VALUES(?,?,?,?)",
-                ("state", 0, raw, stamp),
+                "INSERT INTO personal_health_state(id,revision,payload,updated_at) VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                ("state", 0, Jsonb(raw), stamp),
             )
             conn.execute(
-                "INSERT OR IGNORE INTO personal_health_revisions(revision,payload,reason,created_at) VALUES(?,?,?,?)",
-                (0, raw, "initial", stamp),
+                "INSERT INTO personal_health_revisions(revision,payload,reason,created_at) VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                (0, Jsonb(raw), "initial", stamp),
             )
 
     def read(self, revision=None):
-        with operational_db(self.runtime, "health", self.root) as conn:
+        with operational_db() as conn:
             row = (
-                conn.execute("SELECT payload FROM personal_health_state WHERE id=?", ("state",)).fetchone()
+                conn.execute("SELECT payload FROM personal_health_state WHERE id=%s", ("state",)).fetchone()
                 if revision is None
                 else conn.execute(
-                    "SELECT payload FROM personal_health_revisions WHERE revision=?", (revision,)
+                    "SELECT payload FROM personal_health_revisions WHERE revision=%s", (revision,)
                 ).fetchone()
             )
             if row is None:
                 raise ValueError("Versão de saúde não encontrada.")
-            return json.loads(row[0])
+            return row[0]
 
     def seed_legacy(self, snapshot):
         """Adopt current legacy references once, without overwriting user-owned memory.
@@ -974,26 +969,25 @@ class HealthStore:
         return self._change("seed:legacy_reference", seed)
 
     def _change(self, reason, operation, expected_revision=None):
-        with operational_db(self.runtime, "health", self.root) as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute("SELECT revision,payload FROM personal_health_state WHERE id=?", ("state",)).fetchone()
+        with operational_db() as conn:
+            operational_lock(conn)
+            row = conn.execute("SELECT revision,payload FROM personal_health_state WHERE id=%s", ("state",)).fetchone()
             if expected_revision is not None and row[0] != expected_revision:
                 raise ConflictError("Os dados foram alterados. Atualize a página antes de salvar.")
-            state = json.loads(row[1])
+            state = row[1]
             before = _json(state)
             operation(state)
             if _json(state) == before:
                 return state
             state["revision"] = row[0] + 1
             state["history"].append({"revision": state["revision"], "reason": reason, "created_at": _stamp()})
-            raw = _json(state)
             conn.execute(
-                "INSERT INTO personal_health_revisions(revision,payload,reason,created_at) VALUES(?,?,?,?)",
-                (state["revision"], raw, reason, _stamp()),
+                "INSERT INTO personal_health_revisions(revision,payload,reason,created_at) VALUES(%s,%s,%s,%s)",
+                (state["revision"], Jsonb(state), reason, _stamp()),
             )
             conn.execute(
-                "UPDATE personal_health_state SET revision=?,payload=?,updated_at=? WHERE id=?",
-                (state["revision"], raw, _stamp(), "state"),
+                "UPDATE personal_health_state SET revision=%s,payload=%s,updated_at=%s WHERE id=%s",
+                (state["revision"], Jsonb(state), _stamp(), "state"),
             )
             return state
 

@@ -49,7 +49,7 @@ explica e sugere; as respostas não alteram automaticamente seus registros ou pl
 
 ## Começar do zero
 
-Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preencha duas senhas distintas de banco e mantenha `DATABASE_BACKEND=postgres`. Credenciais Garmin, Hevy e IA são opcionais e podem ser cadastradas no painel.
+Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preencha duas senhas distintas de banco. Credenciais Garmin, Hevy e IA são opcionais e podem ser cadastradas no painel.
 
 ```powershell
 docker compose build api frontend web
@@ -82,6 +82,13 @@ docker compose --profile maintenance run --rm db-tools test
 ```
 
 Esse comando cria um banco temporário, verifica a instalação vazia e executa as suítes de API, dados, energia, adaptação, importação, concorrência e recuperação. O GitHub Actions executa os testes com PostgreSQL descartável e constrói a UI.
+
+Os testes exigem um PostgreSQL descartável (os testes criam e removem bancos por classe, então o usuário precisa de `CREATEDB` — o superusuário do container é o mais simples):
+
+```powershell
+docker run -d --name ascentiq-test-db -p 5433:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=synthetic-local-password -e POSTGRES_DB=ascentiq_test_local postgres:17
+$env:PGHOST="localhost"; $env:PGPORT="5433"; $env:PGUSER="postgres"; $env:PGPASSWORD="synthetic-local-password"; $env:PGDATABASE="ascentiq_test_local"
+```
 
 No ambiente local, com `.venv` instalado a partir de `dashboard/requirements-dev.txt`, os mesmos testes e verificações do CI são:
 
