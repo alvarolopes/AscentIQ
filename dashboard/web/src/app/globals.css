@@ -1,0 +1,752 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-mono: Consolas, 'Liberation Mono', monospace;
+  --font-heading: 'Segoe UI', Arial, Helvetica, sans-serif;
+  --font-sans: 'Segoe UI', Arial, Helvetica, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* AscentIQ theme and domain composition. All layout rules are Tailwind utilities. */
+
+:root,
+.dark {
+  color-scheme: dark;
+  --background: #0a0e14;
+  --foreground: #e6edf3;
+  --card: #161b22;
+  --card-foreground: #e6edf3;
+  --popover: #161b22;
+  --popover-foreground: #e6edf3;
+  --primary: #3fb950;
+  --primary-foreground: #08130b;
+  --secondary: #21262d;
+  --secondary-foreground: #e6edf3;
+  --muted: #21262d;
+  --muted-foreground: #a3adb8;
+  --accent: #26352b;
+  --accent-foreground: #e6edf3;
+  --destructive: #f78166;
+  --border: #30363d;
+  --input: #30363d;
+  --ring: #58a6ff;
+  --chart-1: #3fb950;
+  --chart-2: #f78166;
+  --chart-3: #d29922;
+  --chart-4: #58a6ff;
+  --chart-5: #bc8cff;
+  --radius: 0.75rem;
+  --sidebar: #0d1117;
+  --sidebar-foreground: #e6edf3;
+  --sidebar-primary: #3fb950;
+  --sidebar-primary-foreground: #08130b;
+  --sidebar-accent: #26352b;
+  --sidebar-accent-foreground: #e6edf3;
+  --sidebar-border: #30363d;
+  --sidebar-ring: #58a6ff;
+}
+
+@layer base {
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+  #main-content {
+    scroll-margin-top: 6rem;
+  }
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply min-h-full bg-background font-sans;
+  }
+  body {
+    @apply m-0 min-h-dvh text-sm text-foreground antialiased;
+  }
+  h1 {
+    @apply text-2xl font-semibold leading-tight tracking-tight;
+  }
+  h2 {
+    @apply text-base font-semibold leading-snug;
+  }
+  h3 {
+    @apply text-sm font-semibold leading-snug;
+  }
+  p {
+    @apply leading-relaxed;
+  }
+  a {
+    @apply text-sky-300;
+  }
+  summary {
+    @apply cursor-pointer;
+  }
+  summary:focus-visible,
+  a:focus-visible {
+    @apply rounded-sm outline-2 outline-offset-4 outline-ring;
+  }
+  input,
+  select,
+  textarea {
+    @apply min-w-0;
+  }
+  input[type='checkbox'] {
+    @apply accent-primary;
+  }
+  select option {
+    @apply bg-card text-foreground;
+  }
+  progress {
+    @apply accent-primary;
+  }
+  ul {
+    @apply list-disc space-y-1.5 pl-5;
+  }
+  ::selection {
+    @apply bg-primary/30 text-foreground;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply mb-5 min-w-0 rounded-xl border border-border bg-card p-5;
+  }
+  .panel-heading,
+  .proposal-heading {
+    @apply flex flex-wrap items-start justify-between gap-4;
+  }
+  .panel-heading {
+    @apply mb-4;
+  }
+  .panel-heading p {
+    @apply mt-1.5 max-w-2xl text-xs text-muted-foreground;
+  }
+  .panel > h2 {
+    @apply mb-4;
+  }
+  .page-title {
+    @apply mb-4 space-y-2;
+  }
+  .page-title p {
+    @apply max-w-3xl text-sm text-muted-foreground;
+  }
+  .eyebrow {
+    @apply text-xs font-semibold tracking-wide text-muted-foreground;
+  }
+  .muted {
+    @apply text-muted-foreground;
+  }
+  .small {
+    @apply text-xs;
+  }
+  .empty {
+    @apply rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground;
+  }
+  .notice {
+    @apply my-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs leading-relaxed text-amber-200;
+  }
+  .notice p + p {
+    @apply mt-2;
+  }
+  .success-note {
+    @apply mb-4 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-xs leading-relaxed text-green-200;
+  }
+  .error {
+    @apply mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs leading-relaxed text-orange-200;
+  }
+  .footnote,
+  .source-note {
+    @apply text-xs leading-relaxed text-muted-foreground;
+  }
+
+  .metrics {
+    @apply my-5 grid gap-4;
+  }
+  .metrics.three {
+    @apply grid-cols-3;
+  }
+  .metrics.four,
+  .dashboard-summary {
+    @apply grid-cols-4;
+  }
+  .dashboard-summary {
+    @apply grid gap-4;
+  }
+  .metric {
+    @apply min-w-0 rounded-xl border border-border bg-card p-4;
+  }
+  .metric-value {
+    @apply my-2 text-3xl font-semibold leading-tight tracking-tight tabular-nums;
+  }
+  .metric-value span,
+  .dashboard-card small {
+    @apply text-sm font-normal tracking-normal text-muted-foreground;
+  }
+  .metric.green .metric-value {
+    @apply text-primary;
+  }
+  .metric.rust .metric-value {
+    @apply text-orange-300;
+  }
+  .metric.gold .metric-value {
+    @apply text-amber-300;
+  }
+  .daily-nutrition-progress .metric-value,
+  .dashboard-card .metric-value {
+    @apply text-2xl break-words;
+  }
+  .daily-nutrition-progress .target-total {
+    @apply text-base text-muted-foreground;
+  }
+  .daily-nutrition-progress progress {
+    @apply h-2 w-full;
+  }
+  .nutrition-target-notice {
+    @apply mb-5;
+  }
+  .dashboard-card {
+    @apply flex flex-col;
+  }
+  .dashboard-card > button {
+    @apply mt-auto self-start;
+  }
+  .dashboard-grid,
+  .split {
+    @apply grid grid-cols-2 gap-5;
+  }
+  .dashboard-actions,
+  .report-actions {
+    @apply flex flex-wrap items-center gap-2.5;
+  }
+  .dashboard-actions {
+    @apply mb-4;
+  }
+  .heading-with-info,
+  .dashboard-note {
+    @apply flex items-center gap-2.5;
+  }
+  .dashboard-note {
+    @apply justify-between;
+  }
+
+  .personal-form {
+    @apply mt-4;
+  }
+  .form-grid {
+    @apply mb-4 grid grid-cols-2 gap-x-5 gap-y-4;
+  }
+  .form-grid .wide {
+    @apply col-span-full;
+  }
+  .form-fieldset,
+  .food-fieldset {
+    @apply m-0 min-w-0 border-0 p-0;
+  }
+  .personal-form label,
+  .food-fieldset label,
+  .question-label,
+  .record-row label,
+  .filters label {
+    @apply flex min-w-0 flex-col items-stretch gap-2 text-xs leading-relaxed text-muted-foreground;
+  }
+  .personal-form input,
+  .personal-form textarea,
+  .food-fieldset input,
+  .food-fieldset textarea,
+  .question-label textarea {
+    @apply w-full;
+  }
+  .checkbox-label {
+    @apply flex-row items-center gap-2 text-foreground;
+  }
+  .personal-form .checkbox-label,
+  .food-fieldset .checkbox-label,
+  .filters .checkbox-label {
+    @apply flex-row items-center gap-2 text-foreground;
+  }
+  .checkbox-label input[type='checkbox'] {
+    @apply size-4 shrink-0;
+  }
+  .personal-form .report-actions {
+    @apply my-3;
+  }
+  .filters {
+    @apply mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4;
+  }
+  .filters > label {
+    @apply min-w-36;
+  }
+  .filters .search {
+    @apply flex-1;
+  }
+  .question-label {
+    @apply mt-4;
+  }
+  .question-label + .report-actions {
+    @apply mt-3;
+  }
+  .section-summary {
+    @apply text-sm font-semibold;
+  }
+  details.panel[open] > summary {
+    @apply mb-4;
+  }
+  .method {
+    @apply mt-3 border-t border-border pt-3;
+  }
+  .method > summary {
+    @apply text-xs text-sky-300;
+  }
+  .method > p {
+    @apply my-3 text-xs leading-relaxed text-muted-foreground;
+  }
+  .method textarea,
+  .method .report-actions {
+    @apply my-3;
+  }
+  .button {
+    @apply inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-secondary px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted;
+  }
+  .button:focus-visible {
+    @apply outline-2 outline-offset-4 outline-ring;
+  }
+  .text-button {
+    @apply mt-3;
+  }
+
+  .table-scroll {
+    @apply max-w-full overflow-x-auto;
+  }
+  .pagination {
+    @apply mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4;
+  }
+  .pagination label {
+    @apply flex-row items-center gap-2 text-xs;
+  }
+  .table-scroll table {
+    @apply w-full border-collapse text-left text-xs tabular-nums;
+  }
+  .table-scroll th {
+    @apply whitespace-nowrap border-b border-border bg-card px-3 py-3 text-xs font-medium text-muted-foreground;
+  }
+  .table-scroll td {
+    @apply border-b border-border px-3 py-3 align-middle;
+  }
+  .table-scroll tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .table-scroll tbody tr:hover {
+    @apply bg-muted/30;
+  }
+  .table-scroll td input {
+    @apply min-w-28;
+  }
+  .table-scroll td .small {
+    @apply mt-1;
+  }
+  .tag {
+    @apply inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full border border-border bg-secondary px-2 py-0.5 text-xs text-foreground;
+  }
+  .tag.running,
+  .tag.completed,
+  .tag.accepted,
+  .tag.active,
+  .tag.done,
+  .tag.connected,
+  .tag.configured {
+    @apply border-primary/30 bg-primary/10 text-green-300;
+  }
+  .tag.strength {
+    @apply border-sky-400/30 bg-sky-400/10 text-sky-200;
+  }
+  .tag.failed,
+  .tag.partial,
+  .tag.stale,
+  .tag.rejected,
+  .tag.skipped {
+    @apply border-orange-400/30 bg-orange-400/10 text-orange-200;
+  }
+  .tag.queued,
+  .tag.pending,
+  .tag.provisional,
+  .tag.planned {
+    @apply border-amber-400/30 bg-amber-400/10 text-amber-200;
+  }
+
+  .context-grid,
+  .evidence-grid {
+    @apply my-5 grid grid-cols-2 gap-x-4 gap-y-5;
+  }
+  .context-grid > div,
+  .evidence-grid > div {
+    @apply min-w-0;
+  }
+  .context-grid span {
+    @apply mb-1.5 block text-xs text-muted-foreground;
+  }
+  .context-grid b {
+    @apply text-xl font-medium break-words tabular-nums;
+  }
+  .evidence-grid p {
+    @apply text-xs leading-relaxed text-muted-foreground;
+  }
+  .record-list {
+    @apply mt-5;
+  }
+  .record-row,
+  .proposal-card,
+  .document-card {
+    @apply border-t border-border py-5;
+  }
+  .record-row {
+    @apply flex items-start justify-between gap-5;
+  }
+  .record-row > div:first-child {
+    @apply min-w-0 flex-1;
+  }
+  .record-row h3 {
+    @apply my-2;
+  }
+  .record-row p {
+    @apply my-1.5 text-xs break-words;
+  }
+  .record-row .report-actions {
+    @apply max-w-80 justify-end;
+  }
+  .record-row label {
+    @apply mt-3;
+  }
+  .plan-summary {
+    @apply my-4 flex flex-col items-start gap-2 rounded-lg border border-border bg-secondary/30 p-4;
+  }
+  .plan-summary > strong {
+    @apply text-2xl font-medium tabular-nums;
+  }
+  .plan-summary > span,
+  .plan-summary > p {
+    @apply text-xs text-muted-foreground;
+  }
+  .proposal-card > p {
+    @apply my-3 text-sm;
+  }
+  .proposal-card .report-actions {
+    @apply mt-4;
+  }
+  .integration-grid {
+    @apply mb-5 grid grid-cols-2 gap-4;
+  }
+  .integration-card,
+  .import-result {
+    @apply min-w-0 rounded-lg border border-border bg-secondary/20 p-4;
+  }
+  .integration-card > p {
+    @apply my-3 text-xs text-muted-foreground;
+  }
+  .integration-card dl {
+    @apply text-xs;
+  }
+  .integration-card dl > div {
+    @apply mt-3 flex items-start justify-between gap-3;
+  }
+  .integration-card dt {
+    @apply text-muted-foreground;
+  }
+  .integration-card dd {
+    @apply text-right;
+  }
+  .integration-card .personal-form label {
+    @apply my-3;
+  }
+  .import-result {
+    @apply mt-5;
+  }
+  .import-result > p {
+    @apply mt-3 text-xs;
+  }
+  .document-card .proposal-heading {
+    @apply items-center;
+  }
+  .document-card .method > button {
+    @apply mt-3;
+  }
+  .export-selection {
+    @apply my-4 flex flex-wrap gap-x-5 gap-y-3;
+  }
+  .context-preview {
+    @apply max-h-96 overflow-auto rounded-lg border border-border bg-background p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words text-muted-foreground;
+  }
+
+  .meal-grid {
+    @apply grid grid-cols-2 gap-4;
+  }
+  .meal-card {
+    @apply flex min-w-0 flex-col rounded-xl border border-border bg-card p-4;
+  }
+  .meal-card .food-description {
+    @apply my-3 text-sm leading-relaxed whitespace-pre-wrap break-words;
+  }
+  .meal-card .report-actions {
+    @apply mt-auto justify-start pt-3;
+  }
+  .meal-card .food-macros {
+    @apply my-3 grid grid-cols-2 gap-2 rounded-lg bg-background p-3 text-xs text-muted-foreground;
+  }
+  .meal-photo,
+  .meal-card .saved-food-image {
+    @apply my-3 h-40 w-full rounded-lg object-cover;
+  }
+  .saved-food-image {
+    @apply my-3 block max-h-96 max-w-full rounded-lg;
+  }
+  .food-image {
+    @apply my-4 grid grid-cols-[150px_minmax(0,1fr)] items-center gap-5;
+  }
+  .food-image img {
+    @apply max-h-48 w-36 rounded-lg border border-border object-cover;
+  }
+  .food-image p {
+    @apply my-2;
+  }
+  .food-entry:not(.meal-card),
+  .food-review {
+    @apply mt-5 border-t border-border pt-5;
+  }
+  .food-description {
+    @apply text-sm leading-relaxed whitespace-pre-wrap break-words;
+  }
+  .food-editor {
+    @apply min-w-[720px];
+  }
+  .food-editor td {
+    @apply px-2 py-2;
+  }
+  .recipe-library {
+    @apply mt-4;
+  }
+  .recipe-portions {
+    @apply my-3 max-w-48;
+  }
+  .daily-report {
+    @apply max-w-[85ch] text-sm leading-loose whitespace-pre-wrap break-words;
+  }
+  .daily-textarea {
+    @apply my-3 w-full resize-y font-mono text-xs leading-relaxed;
+  }
+  .assistant-content {
+    @apply min-w-0;
+  }
+  .assistant-meta {
+    @apply flex flex-wrap items-center gap-3 text-xs text-muted-foreground;
+  }
+  .assistant-message {
+    @apply border-t border-border py-5;
+  }
+  .assistant-message h3 {
+    @apply my-3 text-sm;
+  }
+  .assistant-conversation {
+    @apply mt-5;
+  }
+  .assistant-conversation > h2 {
+    @apply mb-3;
+  }
+  .assistant-content.compact .filters {
+    @apply gap-2 p-3;
+  }
+  .assistant-content.compact .filters > label {
+    @apply min-w-28 flex-1;
+  }
+  .assistant-content.compact .assistant-message {
+    @apply py-3;
+  }
+  .assistant-content.compact .daily-report {
+    @apply text-xs;
+  }
+
+  .session {
+    @apply border-t border-border;
+  }
+  .session > summary {
+    @apply flex list-none items-center justify-between gap-4 py-4;
+  }
+  .session > summary::-webkit-details-marker {
+    @apply hidden;
+  }
+  .session > summary > div:first-child > strong {
+    @apply block text-sm;
+  }
+  .session > summary > div:first-child > span {
+    @apply mt-1.5 block text-xs text-muted-foreground;
+  }
+  .session-stats {
+    @apply ml-auto shrink-0 text-right text-sm tabular-nums;
+  }
+  .session-stats small,
+  .session-stats b {
+    @apply text-xs text-muted-foreground;
+  }
+  .session-stats b {
+    @apply mt-1.5 block;
+  }
+  .exercise {
+    @apply mb-4 rounded-lg border border-border bg-secondary/20 p-4;
+  }
+  .exercise h3 {
+    @apply mb-3;
+  }
+  .install-app {
+    @apply fixed right-4 bottom-4 z-50 flex max-w-md flex-wrap gap-3 rounded-2xl border border-border bg-card p-5 shadow-xl;
+  }
+  .install-app > div {
+    @apply basis-full;
+  }
+  .install-app p {
+    @apply mt-2 text-xs text-muted-foreground;
+  }
+}
+
+/* Fixed category colors also stay legible under the ghost button hover state. */
+.frequency-level-0 {
+  @apply bg-[#484f58];
+}
+.frequency-level-1 {
+  @apply bg-[#c6efd0];
+}
+.frequency-level-2 {
+  @apply bg-[#83d99b];
+}
+.frequency-level-3 {
+  @apply bg-[#3aa95e];
+}
+.frequency-level-4 {
+  @apply bg-[#176b36];
+}
+
+@media (max-width: 1100px) {
+  .dashboard-summary,
+  .metrics.four {
+    @apply grid-cols-2;
+  }
+}
+@media (max-width: 760px) {
+  .panel {
+    @apply p-4;
+  }
+  .form-grid,
+  .integration-grid,
+  .evidence-grid,
+  .meal-grid,
+  .split,
+  .dashboard-grid {
+    @apply grid-cols-1;
+  }
+  .metrics.three {
+    @apply grid-cols-1;
+  }
+  .dashboard-summary {
+    @apply gap-3;
+  }
+  .metric-value {
+    @apply text-2xl;
+  }
+  .daily-nutrition-progress .metric-value {
+    @apply text-xl;
+  }
+  .personal-form input,
+  .personal-form textarea,
+  .question-label textarea {
+    @apply text-base;
+  }
+  .filters {
+    @apply gap-2.5 p-3;
+  }
+  .filters > label {
+    @apply min-w-28 flex-1;
+  }
+  .record-row {
+    @apply flex-col gap-3;
+  }
+  .record-row .report-actions {
+    @apply max-w-none justify-start;
+  }
+  .table-scroll table {
+    @apply min-w-[450px];
+  }
+  .food-image {
+    @apply grid-cols-1 gap-3;
+  }
+  .food-image img {
+    @apply max-w-full;
+  }
+  .context-grid b {
+    @apply text-lg;
+  }
+  .session > summary {
+    @apply gap-2;
+  }
+  .session-stats {
+    @apply text-xs;
+  }
+  .install-app {
+    @apply right-3 left-3 max-w-none;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

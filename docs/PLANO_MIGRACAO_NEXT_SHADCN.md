@@ -1,15 +1,17 @@
-# Plano de migração da UI do AscentIQ
+# Plano e resultado da migração da UI do AscentIQ
 
-Data: 08/10/2026. Status: planejamento; implementação da nova stack ainda não iniciada.
+Data de início e atualização: 08/10/2026. **Status: migração implementada, promovida para `dashboard/web`, publicada na origem atual e validada operacionalmente em desktop/mobile e PWA.** As correções finais de retorno seguro após login e de aviso de conflito no assistente foram testadas e republicadas. HTTPS confiável para instalação mobile pela LAN permanece uma dependência externa à troca de UI.
 
-Objetivo: substituir integralmente a interface React/Vite/CSS atual por React + Next.js App Router + TypeScript + Tailwind CSS + shadcn/ui, preservando as funcionalidades, os dados, as integrações e a composição visual aprovada.
+Objetivo realizado: substituir integralmente a interface React/Vite/CSS anterior por React + Next.js App Router + TypeScript + Tailwind CSS + shadcn/ui, preservando as funcionalidades, os dados, as integrações e a composição visual aprovada.
 
-Este documento é uma especificação de execução para outra IA ou desenvolvedor. A migração termina quando todos os fluxos ativos funcionam na nova interface e o frontend antigo pode ser retirado com segurança. Criar apenas um novo shell ou algumas páginas não conclui o trabalho.
+Este documento conserva os requisitos do plano e registra as decisões efetivamente implementadas, as validações realizadas e o trabalho restante. A interface antiga deixou de ser a fonte oficial do frontend no repositório. Frontend/gateway estão saudáveis; leituras reais, navegador desktop/mobile e ciclo público da PWA foram conferidos. O resultado é limitado aos cenários registrados: não equivale a executar todos os fornecedores externos nem a validar instalação mobile via HTTP na LAN.
+
+Resultado confirmado: App Router com as sete rotas previstas, componentes shadcn/Radix, tema Tailwind, domínio separado por features, infraestrutura TypeScript estrita, contratos API preservados e Docker com frontend Node e gateway Nginx. Passaram lint, types, proibição de estilos, builds finais de produção em Windows e Linux, **17 testes unitários em 6 arquivos** (11 de domínio + 6 de retorno seguro/login) e **28 E2E em uma execução completa** (56,4 s), incluindo plataforma, análises, proxy, acessibilidade e PWA desktop/mobile. Passaram também 2 execuções PWA no ambiente publicado e os smokes reais desktop/mobile nas seis áreas de conteúdo. A correção final de retorno do login foi republicada e verificada em localhost/LAN. Os testes de escrita/IA usam dados e IA sintéticos; os smokes reais são de leitura. Não foram disparadas importações de Garmin/Hevy nem chamadas reais aos provedores de IA como parte desses testes.
 
 ## 1. Requisitos obrigatórios
 
 1. Usar as versões estáveis mais recentes e compatíveis de React, React DOM, Next.js, Tailwind e shadcn na data de início da implementação. Conferir novamente o registro npm antes de instalar e registrar as versões efetivamente adotadas.
-2. Usar Next.js **App Router** e TypeScript em modo estrito. A nova aplicação não será uma única página Vite embutida em Next.
+2. Usar Next.js **App Router** e TypeScript em modo estrito na infraestrutura, rotas e novos primitives. Os módulos de domínio migrados podem conservar JavaScript/JSX para preservar comportamento: `allowJs: true`, `checkJs: false`, sem `@ts-nocheck`, `any` generalizado ou erros de build ignorados. A aplicação não é uma única página Vite embutida em Next.
 3. Estilizar com Tailwind, tokens CSS e os componentes shadcn versionados no projeto.
 4. **Não usar styled-components em nenhuma situação**, nem adicioná-lo como dependência direta ou transitiva. A UI do projeto também não deve adotar Emotion, styled-jsx ou outras soluções CSS-in-JS: proibir dependências diretas, imports e uso dessas soluções em telas, componentes, gráficos e exemplos copiados.
 5. Preservar todas as funcionalidades atualmente acessíveis, incluindo fluxos em modais, configurações, importações, documentos, biblioteca alimentar, exportações e assistente.
@@ -21,9 +23,9 @@ Este documento é uma especificação de execução para outra IA ou desenvolved
 
 As decisões visuais mais recentes do usuário prevalecem sobre descrições antigas dos documentos de referência.
 
-## 2. Ponto de partida confirmado
+## 2. Baseline anterior à migração
 
-| Camada | Implementação atual | Consequência |
+| Camada | Implementação anterior | Consequência da migração |
 |---|---|---|
 | Frontend | React/React DOM 19.2.0, Vite 7.3.6, JavaScript/JSX | Substituir build, entrada, roteamento e componentes da UI |
 | Estilos | CSS próprio em `dashboard/web/src/style.css` | Recriar tema em tokens/Tailwind; retirar a cascata de overrides antiga |
@@ -38,24 +40,39 @@ As decisões visuais mais recentes do usuário prevalecem sobre descrições ant
 
 Não há SSE ou WebSocket implementados nos fluxos atuais de IA. A migração não depende de introduzir streaming de respostas nem de alterar o protocolo de análise.
 
-Referências internas: [especificação funcional](../SPEC_PLATAFORMA_SAUDE_FITNESS.md), [simplificação](SPEC_SIMPLIFICACAO_PLATAFORMA.md) e [direção visual](PLANO_UI_STITCH.md). Considerar também os ajustes de 08/10/2026 presentes no código atual.
+Esta tabela é histórica: Vite, `main.jsx` e `style.css` não são mais a entrada/build da aplicação oficial. A API, os dados e os provedores continuam nas camadas existentes.
 
-## 3. Stack de destino e política de versões
+Referências internas: [especificação funcional](../SPEC_PLATAFORMA_SAUDE_FITNESS.md), [simplificação](SPEC_SIMPLIFICACAO_PLATAFORMA.md) e [direção visual](PLANO_UI_STITCH.md). Os ajustes visuais aprovados em 08/10/2026 foram preservados na implementação.
 
-Snapshot consultado em 08/10/2026, tags `latest` do registro público npm:
+## 3. Stack adotada e política de versões
 
-| Tecnologia | Versão estável verificada | Uso |
+Versões finais declaradas em `dashboard/web/package.json` e resolvidas em `package-lock.json`. O snapshot inicial de `latest` foi conferido com a compatibilidade real da ferramenta; a exceção necessária foi TypeScript:
+
+| Tecnologia | Versão adotada | Uso |
 |---|---|---|
 | Next.js | **16.4.0** | App Router, layouts persistentes, rotas e runtime web |
 | React e React DOM | **19.3.0** | Mesma versão para os dois pacotes |
 | Tailwind CSS e `@tailwindcss/postcss` | **4.3.3** | Estilos utilitários e integração PostCSS |
 | CLI `shadcn` | **4.21.4** | Instalação/manutenção de componentes no código do projeto |
-| TypeScript | **7.0.2** | Tipagem estrita, após validar compatibilidade de toda a ferramenta de build/lint |
-| Node.js | **24 LTS**, patch atualizado e fixado | Desenvolvimento, CI e container Next; a imagem atual já usa a família 24 |
+| TypeScript | **6.0.3** | Versão estável compatível com o parser ESLint instalado |
+| Node.js | **24 LTS**, imagem fixada por digest | Desenvolvimento, CI e container Next; `engines.node >=24.0.0` |
+| npm | **11.15.0** | `packageManager` declarado; instalação reprodutível com `npm ci` |
+| ESLint / eslint-config-next | **9.39.5 / 16.4.0** | Flat config e regras React/Next/TypeScript |
+| Radix UI | **1.7.0** | Base única dos componentes shadcn |
+| TanStack Query | **5.104.1** | Queries, invalidação, cancelamento e polling |
+| React Hook Form / Zod / resolvers | **7.89.0 / 4.6.5 / 5.9.1** | Formulários novos e validação dos contratos críticos |
+| Lucide React | **1.53.0** | Ícones locais de interface |
+| Vitest / Testing Library React | **5.0.3 / 16.3.3** | Testes de domínio e componentes |
+| Playwright / axe Playwright | **1.64.0 / 4.13.0** | Fluxos desktop/mobile e acessibilidade |
+| Prettier | **3.9.9** | Formatação |
 
 Fontes das versões: [Next.js 16.4](https://nextjs.org/blog/next-16-4), [versões do React](https://react.dev/versions), [Tailwind 4.3](https://tailwindcss.com/blog/tailwindcss-v4-3), [npm Tailwind](https://registry.npmjs.org/tailwindcss/latest), [npm shadcn](https://registry.npmjs.org/shadcn/latest), [npm TypeScript](https://registry.npmjs.org/typescript/latest) e [ciclo do Node.js](https://nodejs.org/en/about/previous-releases).
 
 shadcn/ui fornece código de componentes para o projeto; a versão da CLI não representa uma biblioteca monolítica de componentes instalada em runtime. Registrar a versão da CLI, a configuração `components.json` e as alterações dos componentes gerados.
+
+**Compatibilidade TypeScript/ESLint:** o plano inicialmente citava TypeScript 7.0.2. A versão `typescript-eslint` 8.71.1 resolvida por `eslint-config-next` declara suporte `>=4.8.4 <6.1.0`, conforme os metadados preservados no [lockfile](../dashboard/web/package-lock.json). TypeScript 7 ficou fora desse suporte e causou incompatibilidade real no lint. Foi adotado **6.0.3**, sem `--force`, `--legacy-peer-deps` ou supressão de erros. Types, lint e build passaram com essa combinação. Atualizar para TypeScript 7 exige suporte da cadeia de lint antes de trocar o lockfile.
+
+A configuração shadcn adotada é `radix-nova`, base `neutral`, variáveis CSS, ícones Lucide, RSC/TSX e aliases `@/`; está versionada em [components.json](../dashboard/web/components.json). A CLI é dependência de desenvolvimento, fora do runtime de produção.
 
 Política:
 
@@ -65,25 +82,25 @@ Política:
 - Qualquer incompatibilidade deve ser resolvida e documentada antes do primeiro corte. Não mascarar incompatibilidade com `--force`, `--legacy-peer-deps` ou ignorando erros de TypeScript/build.
 - Atualizações posteriores passam por PR, validação e lockfile; não resolver `latest` automaticamente a cada deploy.
 
-Bibliotecas de apoio propostas:
+Bibliotecas de apoio e decisões efetivas:
 
 | Biblioteca | Decisão e propósito |
 |---|---|
-| TanStack Query | Adotar para dados remotos, invalidação, polling controlado e concorrência |
-| React Hook Form + Zod | Adotar para formulários, validação de entrada e erros associados aos campos |
+| TanStack Query | Adotado para dados remotos, invalidação, polling controlado e concorrência |
+| React Hook Form + Zod | Adotados na infraestrutura/novos formulários; formulários de domínio existentes mantêm validação e estado compatíveis com a API |
 | `@hookform/resolvers` | Integração dos schemas com formulários |
 | Lucide React | Ícones de interface; preservar o SVG original do logo |
-| `clsx`, `tailwind-merge`, `class-variance-authority` | Composição de classes/variantes conforme componentes gerados; sem CSS-in-JS |
-| Recharts + shadcn Chart | Gráficos usuais de séries/volumes; validar precisão, lacunas e acessibilidade |
+| `cn` 0.4.0, `class-variance-authority` 0.7.1 e `tw-animate-css` 1.4.0 | Composição/variantes e animações conforme componentes gerados; sem CSS-in-JS |
+| Gráficos especializados em React/SVG | Preservados em `components/shared/charts.jsx` para manter matemática, séries, lacunas, foco e toque; Recharts não foi instalado |
 | Vitest + Testing Library | Testes de regras de apresentação e interações críticas |
 | Playwright + axe-core | Fluxos integrados, regressões visuais e verificações de acessibilidade |
 | ESLint + configuração Next + Prettier | Regras de React/Next/TypeScript e formatação consistente |
 
 Não adicionar Redux, Zustand, TanStack Table, biblioteca de datas, monorepo/Turborepo ou um segundo cliente HTTP sem uma necessidade demonstrada. `fetch` e `Intl` atendem aos casos atuais. Testar compatibilidade das bibliotecas de apoio com a stack escolhida antes de fixá-las.
 
-Referências: [defaults do TanStack Query](https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults), [formulários shadcn com React Hook Form](https://ui.shadcn.com/docs/forms/react-hook-form) e [shadcn Chart](https://ui.shadcn.com/docs/components/chart). Estas escolhas são decisões propostas para o AscentIQ.
+Referências: [defaults do TanStack Query](https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults), [formulários shadcn com React Hook Form](https://ui.shadcn.com/docs/forms/react-hook-form) e [shadcn Chart](https://ui.shadcn.com/docs/components/chart). A manutenção de SVG especializado é a decisão adotada para assegurar paridade; não há obrigação de substituir um gráfico funcional apenas para acrescentar uma biblioteca.
 
-## 4. Arquitetura proposta
+## 4. Arquitetura implementada
 
 ```mermaid
 flowchart LR
@@ -96,7 +113,7 @@ flowchart LR
   A --> I[Garmin / Hevy / importações]
 ```
 
-O gateway mantém a origem e a porta de acesso do aplicativo. O serviço Next e a API ficam na rede interna Docker. A API continua recebendo `/api/*` diretamente pelo gateway; não criar uma segunda implementação dos mesmos endpoints em Route Handlers.
+O gateway mantém a origem e a porta de acesso do aplicativo. O serviço Next e a API ficam na rede interna Docker. A API continua recebendo `/api/*` diretamente pelo gateway. O Route Handler `src/app/api/[...path]/route.ts` é somente um adaptador de transporte para desenvolvimento/testes na mesma origem, preservando Host, Origin, cookies, proteção de escrita, limite de 40 MiB e timeout de 210 s; não implementa regras de negócio nem substitui o backend.
 
 ### Server e Client Components
 
@@ -120,16 +137,16 @@ O gateway mantém a origem e a porta de acesso do aplicativo. O serviço Next e 
 | `/nutrition` | Alimentação |
 | `/sleep` | Sono |
 
-Datas, períodos, filtros e página da lista devem ter representação validada em search params quando for útil para recarregar, compartilhar e voltar/avançar. Não colocar dados médicos, rascunhos, senhas ou tokens na URL. Trocar filtros não deve causar recarga completa da aplicação.
+As rotas de área usam URLs reais e navegação client-side. Datas/períodos/filtros do domínio foram preservados como estado de interface; não houve conversão geral para search params. Se futuramente for necessário compartilhar uma seleção ou restaurá-la após recarregar, adicionar parâmetros validados por fluxo. Não colocar dados médicos, rascunhos, senhas ou tokens na URL. Trocar filtros não deve causar recarga completa da aplicação.
 
 Objetivos, check-in, análises, conta, dados e documentos continuam em modais. Não criar novos destinos no menu para recursos que foram removidos da navegação.
 
 ### Organização de código
 
-Criar inicialmente `dashboard/web-next/` em paralelo. Após a migração completa, assumir o caminho oficial `dashboard/web/`, atualizar CI/Docker/documentação e retirar o frontend antigo. A coexistência é temporária.
+O desenvolvimento ocorreu inicialmente em `dashboard/web-next/`. A promoção já foi realizada: **`dashboard/web/` é o único frontend oficial**, com CI/Docker/README apontando para ele e sem entrada/build Vite. Caminhos abaixo descrevem o repositório após essa promoção.
 
 ```text
-dashboard/web-next/
+dashboard/web/
   src/
     app/
       layout.tsx
@@ -140,7 +157,8 @@ dashboard/web-next/
       (platform)/workouts/{page.tsx,running/page.tsx,strength/page.tsx}
       (platform)/nutrition/page.tsx
       (platform)/sleep/page.tsx
-      manifest.ts
+      api/[...path]/route.ts adaptador de transporte local
+      healthz/route.ts
     components/
       ui/                 componentes shadcn versionados
       shell/              topbar, sidebar, conta, navegação mobile
@@ -148,15 +166,16 @@ dashboard/web-next/
     features/
       dashboard/ workouts/ nutrition/ sleep/
       goals/ checkins/ analyses/ assistant/
-      profile/ settings/ documents/ pwa/
+      auth/ profile/ settings/ documents/ pwa/
     lib/
       api/                clientes browser/server, DTOs e erros
-      queries/            chaves, hooks e invalidação
-      validation/         schemas dos formulários/contratos críticos
+      personalApi.jsx     hooks/adaptação dos contratos de domínio
       dates.ts            datas calendário, fuso e formatação
       utils.ts            cn() e funções pequenas compartilhadas
     providers/            sessão, QueryClient, overlays e assistente
-  public/                 logo, ícones PWA, sw.js e offline público
+    proxy.ts              CSP/nonce por requisição e cache privado
+  public/                 manifesto, logo, ícones PWA, sw.js e offline público
+  scripts/                inicialização standalone e guard de estilos
   tests/                  fixtures sintéticas, componentes e E2E
   components.json
   next.config.ts
@@ -212,36 +231,36 @@ Referências: [integração Tailwind/Next](https://tailwindcss.com/docs/installa
 | Grade de frequência | React + Tailwind próprios, Popover ao toque e conteúdo compartilhado de tooltip |
 | Assistente | Painel não modal persistente; não usar Dialog com bloqueio/focus trap |
 
-Escolher uma base de primitives do shadcn no setup, preferencialmente Radix para os componentes tradicionais, após validar a versão corrente. Registrar em `components.json` e usar as APIs da base escolhida. Não misturar exemplos Radix/Base UI/React Aria sem adaptar sua composição.
+A base escolhida foi Radix, registrada no estilo `radix-nova` em `components.json`. Manter suas APIs na manutenção; não misturar exemplos Radix/Base UI/React Aria sem adaptar sua composição.
 
 ## 6. Matriz de paridade funcional
 
-| Área | Funcionalidades que precisam funcionar na nova UI | Código atual de referência |
+| Área | Funcionalidades preservadas na implementação | Módulos oficiais de referência |
 |---|---|---|
-| Sessão e shell | Login/logout, expiração, acesso direto e navegação, atualização discreta, logo, boxed, dropdown, mobile | `main.jsx`, `personalApi.jsx` |
-| Dashboard | Data, kcal/proteína versus metas, treino consolidado, sono com data, objetivo, check-in, pendências/cobertura e informação sob ícone | `Health.jsx` / `Today` |
-| Frequência | Ano, grade completa centralizada, 0–4 categorias, cinza sem registro e intensidade crescente, tooltip por hover/foco/toque com data e labels presentes | `Frequency.jsx`, `dashboard/frequency.py` |
-| Check-in | Criar, editar e remover registro do dia, validação e confirmação de descarte | `Health.jsx`, `ui.jsx` |
-| Análise geral do dia | Modal no Dashboard/Nutrition, horário/contexto, relato opcional, gerar/consultar, resposta curta, stale, prompt e auditoria sob demanda | `DayReview.jsx` |
-| Workouts geral | Fitness/Fadiga/Forma e método, períodos completos, resumo semanal/modalidades, referências e atividades recentes | `main.jsx` / `Overview`, `Performance` |
-| Corrida | Filtros/busca, distância/duração/subida reais, volume semanal, histórico/provas paginados, IEP/confiança e origem dos dados | `main.jsx` / `Running`, `ActivityTable` |
-| Força | Consolidação Garmin+Hevy, sessões, volume/séries/duração/FC, gráficos por grupo, exercícios/séries paginados, aquecimento/trabalho | `main.jsx` / `Strength` |
-| Análise de treinos | Botão na barra, modal, data, contexto, geração, fingerprint/stale, copiar prompt e importar resposta externa | `DailyAnalysis.jsx` |
-| Nutrition | Data, kcal/macros e metas, grid de refeições, adicionar/editar/copiar/excluir, fotos, cobertura parcial/completa/jejum | `Nutrition.jsx`, `FoodDiary.jsx` |
-| Estimativa alimentar | Salvar dispara IA automaticamente, sem segundo clique obrigatório e sem campo manual obrigatório de calorias; pendência/erro/retry, hipóteses e itens | `FoodDiary.jsx` |
-| Biblioteca alimentar | Salvar referência/receita, usar, escalar porções, revisar e remover; paginação | `FoodDiary.jsx` |
-| Sleep | Filtros 7/30/90/tudo e intervalo, médias/cobertura, duração e score distintos, lacunas, histórico paginado, demais medidas apenas quando presentes | `Sleep.jsx`, `sleepView.js`, `SleepContext.jsx` |
-| Objetivos e plano | Modal, CRUD/estados/prioridade/alvos/datas, preservações, plano vigente, metas automáticas, orientação manual, aceitar/rejeitar propostas e evidências | `Goals.jsx` |
-| Conta e perfil | Sexo/altura/peso/fuso/TDEE manual, preferências/restrições/modalidades, medidas CRUD/gráficos, referências de gasto e check-in | `Health.jsx`, `EnergyEditor` |
-| Assistente | Painel não bloqueante, minimizar/fechar/reabrir, conversa/rascunho durante navegação, histórico paginado/retomada, contextos de dia/mês/objetivos/períodos/custom, copiar/importar | `Assistant.jsx`, shell em `main.jsx` |
-| Contexto médico | Documentos/dados médicos só entram após seleção explícita; retirar consentimento impede reenvio pelos turnos anteriores | `Assistant.jsx`, `Documents.jsx` |
-| Dados e fontes | Configurar/desconectar Garmin/Hevy/IA, status/freshness/erro, Ollama/cloud opcionais, sincronização e progresso | `Settings.jsx` |
-| Importação e reconciliação | CSV/GPX/FIT, atividade manual, resultados, repetição idempotente, vincular/manter/desvincular e histórico paginado | `Settings.jsx` |
-| Documentos | Upload, original autenticado, extração consentida por IA, rascunho editável, resultados paginados, confirmação para incorporar e remoção | `Documents.jsx` |
-| Portabilidade | JSON/ZIP, anexos selecionados, imagens/documentos/importações opcionais, sem credenciais/sessões | `Settings.jsx` |
-| PWA | Oferta de instalação, orientação iOS, instalado/adiado, identidade/ícones, offline público e cache sem dados pessoais | `InstallApp.jsx`, `public/sw.js` |
+| Sessão e shell | Login/logout, expiração, acesso direto e navegação, atualização discreta, logo, boxed, dropdown, mobile | `features/auth/sign-in.tsx`, `components/shell/platform-shell.tsx`, `providers/`, `lib/api/` |
+| Dashboard | Data, kcal/proteína versus metas, treino consolidado, sono com data, objetivo, check-in, pendências/cobertura e informação sob ícone | `features/dashboard/Dashboard.jsx` |
+| Frequência | Ano, grade completa centralizada, 0–4 categorias, cinza sem registro e intensidade crescente, tooltip por hover/foco/toque com data e labels presentes | `features/dashboard/Frequency.jsx`, backend `dashboard/frequency.py` |
+| Check-in | Criar, editar e remover registro do dia, validação e confirmação de descarte | `features/checkins/CheckinForm.jsx`, `features/profile/Health.jsx`, `components/shared/ui.tsx` |
+| Análise geral do dia | Modal no Dashboard/Nutrition, horário/contexto, relato opcional, gerar/consultar, resposta curta, stale, prompt e auditoria sob demanda | `features/analyses/DayReview.jsx` |
+| Workouts geral | Fitness/Fadiga/Forma e método, períodos completos, resumo semanal/modalidades, referências e atividades recentes | `features/workouts/Overview.jsx`, `components/shared/charts.jsx` |
+| Corrida | Filtros/busca, distância/duração/subida reais, volume semanal, histórico/provas paginados, IEP/confiança e origem dos dados | `features/workouts/Running.jsx`, `shared.jsx`, `utils.js` |
+| Força | Consolidação Garmin+Hevy, sessões, volume/séries/duração/FC, gráficos por grupo, exercícios/séries paginados, aquecimento/trabalho | `features/workouts/Strength.jsx`, `utils.js` |
+| Análise de treinos | Botão na barra, modal, data, contexto, geração, fingerprint/stale, copiar prompt e importar resposta externa | `features/analyses/DailyAnalysis.jsx` |
+| Nutrition | Data, kcal/macros e metas, grid de refeições, adicionar/editar/copiar/excluir, fotos, cobertura parcial/completa/jejum | `app/(platform)/nutrition/page.tsx`, `features/nutrition/FoodDiary.jsx` |
+| Estimativa alimentar | Salvar dispara IA automaticamente, sem segundo clique obrigatório e sem campo manual obrigatório de calorias; pendência/erro/retry, hipóteses e itens | `features/nutrition/FoodDiary.jsx` |
+| Biblioteca alimentar | Salvar referência/receita, usar, escalar porções, revisar e remover; paginação | `features/nutrition/FoodDiary.jsx` |
+| Sleep | Filtros 7/30/90/tudo e intervalo, médias/cobertura, duração e score distintos, lacunas, histórico paginado, demais medidas apenas quando presentes | `features/sleep/Sleep.jsx`, `sleepView.js`, `SleepContext.jsx` |
+| Objetivos e plano | Modal, CRUD/estados/prioridade/alvos/datas, preservações, plano vigente, metas automáticas, orientação manual, aceitar/rejeitar propostas e evidências | `features/goals/Goals.jsx` |
+| Conta e perfil | Sexo/altura/peso/fuso/TDEE manual, preferências/restrições/modalidades, medidas CRUD/gráficos, referências de gasto e check-in | `features/profile/Health.jsx` |
+| Assistente | Painel não bloqueante, minimizar/fechar/reabrir, conversa/rascunho durante navegação, histórico paginado/retomada, contextos de dia/mês/objetivos/períodos/custom, copiar/importar | `features/assistant/Assistant.jsx`, `components/shell/platform-shell.tsx` |
+| Contexto médico | Documentos/dados médicos só entram após seleção explícita; retirar consentimento impede reenvio pelos turnos anteriores | `features/assistant/Assistant.jsx`, `features/documents/Documents.jsx` |
+| Dados e fontes | Configurar/desconectar Garmin/Hevy/IA, status/freshness/erro, Ollama/cloud opcionais, sincronização e progresso | `features/settings/Settings.jsx` |
+| Importação e reconciliação | CSV/GPX/FIT, atividade manual, resultados, repetição idempotente, vincular/manter/desvincular e histórico paginado | `features/settings/Settings.jsx` |
+| Documentos | Upload, original autenticado, extração consentida por IA, rascunho editável, resultados paginados, confirmação para incorporar e remoção | `features/documents/Documents.jsx` |
+| Portabilidade | JSON/ZIP, anexos selecionados, imagens/documentos/importações opcionais, sem credenciais/sessões | `features/settings/Settings.jsx` |
+| PWA | Oferta de instalação, orientação iOS, instalado/adiado, identidade/ícones, offline público e cache sem dados pessoais | `features/pwa/InstallApp.jsx`, `public/manifest.webmanifest`, `public/sw.js` |
 
-Todos os caminhos da última coluna são relativos a `dashboard/web/src`, exceto os indicados como backend/public. Não substituir recursos existentes por botões sem implementação, dados mockados no aplicativo real ou links “em breve”.
+Todos os caminhos da última coluna são relativos a `dashboard/web/src`, exceto os indicados como backend/public. A matriz registra a implementação preservada; a cobertura comprovada por testes é discriminada na seção 13. Não interpretar a migração de um módulo como execução real de sua integração externa. Não substituir recursos existentes por botões sem implementação, dados mockados no aplicativo real ou links “em breve”.
 
 Os históricos e serviços das áreas ocultas continuam armazenados/operacionais, sem obrigação de recriar suas telas antigas. Uma rotina nova de UI não pode apagar arquivos, planos ou registros só porque não há mais um item de menu para eles.
 
@@ -288,7 +307,7 @@ Plano de cache: desativar **Cache Components na configuração inicial**, ainda 
 
 Fotos de refeições e documentos continuam em endpoints autenticados. Usar URLs autenticadas diretamente, ou imagem Next com otimização desabilitada, até existir uma política privada específica. Não transportar arquivos privados para `public/`.
 
-A CSP atual do Nginx, `script-src 'self'`, precisa ser adaptada aos scripts de hidratação do Next. Implementar nonces por requisição e política compatível com renderização dinâmica, seguindo o guia oficial. Definir um responsável pela CSP das páginas e evitar dois headers conflitantes. Não liberar `unsafe-eval` em produção nem desativar a política para fazer o build funcionar. O ambiente dev pode exigir política própria, sem propagá-la ao deploy.
+A CSP foi adaptada aos scripts de hidratação do Next em `src/proxy.ts`, com nonce por requisição e páginas dinâmicas. Next é o responsável pela CSP das páginas; Nginx não adiciona uma segunda política. Produção usa `script-src 'self' 'nonce-…' 'strict-dynamic'`, sem `unsafe-eval`; esse último é permitido somente em desenvolvimento. Os testes sintéticos de produção verificaram headers, navegação e ausência de violações CSP/hidratação.
 
 Não registrar payloads médicos, senhas, cookies ou chaves nos logs do Node/CI. HTML e respostas RSC autenticadas precisam de política privada sem cache no gateway; manter os headers de proteção existentes onde aplicáveis.
 
@@ -307,11 +326,15 @@ No calendário, teclado e toque acessam o mesmo resumo de hover, omitindo labels
 ## 10. PWA e execução local
 
 - Preservar `id`, scope e entrada `/`, nome, logo/ícones e display standalone, evitando criar outra instalação por mudança de identidade.
-- Migrar o manifesto para a convenção Next ou manter o arquivo atual; ter uma única fonte de verdade.
+- A única fonte do manifesto é `public/manifest.webmanifest`, vinculada pelo layout Next; não há `app/manifest.ts` concorrente.
 - Registrar service worker em Client Component. Preservar oferta Android/navegadores compatíveis, orientação de instalação iOS, ocultação quando instalado e adiamento de sete dias.
 - Cachear apenas recursos públicos explicitamente permitidos. Não cachear `/api`, páginas autenticadas, respostas RSC/Flight, fotos alimentares ou documentos. Revisar o cache antigo durante a troca de versão.
 - Offline mostra página pública sem dados de saúde e não promete edição/sincronização offline.
 - Usar assets/fontes locais, sem dependência de CDN em runtime.
+
+Implementação entregue em `features/pwa/InstallApp.jsx`, manifesto/ícones públicos e `public/sw.js`. O worker usa o cache `ascentiq-shell-v3`, remove caches anteriores da mesma família e permite somente a página offline e ícones públicos. Navegações são network-first com fallback público; API, páginas privadas e respostas Flight não são armazenadas nesse cache. A instalação real em dispositivos mobile na LAN continua dependente da pendência abaixo.
+
+O registro do worker foi confirmado em novo contexto de navegador: `navigator.serviceWorker.register('/sw.js')` acontece em contexto seguro, o worker assume controle e navegação offline apresenta a página genérica. `tests/e2e/pwa.spec.ts` passou em desktop/mobile no harness sintético (**2 execuções**) e na publicação real (**2 execuções**). O cache observado tinha exatamente os seis assets públicos permitidos; nenhuma API, página privada ou informação pessoal. Isso valida o ciclo público do worker em localhost, mas não substitui instalar em um dispositivo físico com HTTPS LAN.
 
 **Pendência existente:** o IP de rede local atualmente é servido por HTTP. Next.js não transforma isso em contexto seguro. Incluir uma tarefa de configuração e validação de HTTPS confiável nos dispositivos usados; a forma de confiança/domínio/certificado precisa ser definida antes dessa tarefa. A troca de UI pode ser concluída sem declarar a instalação PWA mobile em LAN validada enquanto essa dependência persistir.
 
@@ -321,12 +344,12 @@ Referência: [guia PWA do Next](https://nextjs.org/docs/app/guides/progressive-w
 
 Skills são instruções para o agente desenvolvedor, não dependências que o navegador precisa para funcionar. Incluir esta preparação no trabalho de migração e registrar fonte/revisão; não instalar skills desconhecidas apenas pelo nome.
 
-| Recurso | Ação planejada | Motivo |
+| Recurso | Estado confirmado | Motivo |
 |---|---|---|
-| Skill oficial **shadcn** | Instalar se ausente, a partir da fonte indicada na documentação oficial; conferir `SKILL.md` e configuração do projeto | Encontrar/manter componentes, tema, CLI e APIs da base correta |
-| **react-best-practices** da Vercel | Instalar se ausente, a partir de `vercel-labs/agent-skills` | Revisar fronteiras server/client, consultas, renderização e tamanho de bundle |
-| **web-design-guidelines** da Vercel | Recomendada para a revisão final e manutenção; instalar se ausente | Verificação de acessibilidade, foco, formulários e UX |
-| Documentação de agentes do **Next.js** | Ativar/preservar o `AGENTS.md` e a documentação vinculada à versão instalada | Usar convenções atuais do App Router em vez de instruções antigas |
+| Skill oficial **shadcn** | Instalada e disponível em `C:/Users/alvar/.codex/skills/shadcn/SKILL.md`; fonte oficial shadcn | Encontrar/manter componentes, tema, CLI e APIs da base correta |
+| **vercel-react-best-practices** | Instalada em `C:/Users/alvar/.codex/skills/react-best-practices/SKILL.md`; `vercel-labs/agent-skills`, versão de metadados 1.0.0 | Revisar fronteiras server/client, consultas, renderização e tamanho de bundle |
+| **web-design-guidelines** da Vercel | Instalada em `C:/Users/alvar/.codex/skills/web-design-guidelines/SKILL.md`; versão de metadados 1.0.0 | Verificação de acessibilidade, foco, formulários e UX |
+| Documentação de agentes do **Next.js** | `dashboard/web/AGENTS.md` entregue, com consulta às docs da versão instalada em `node_modules/next/dist/docs` | Usar convenções atuais do App Router em vez de instruções antigas |
 | **skill-installer** | Já disponível nesta sessão; usar para instalações após validar origem/path/ref | Evitar instalação duplicada ou pacote incorreto |
 | Skill de testes de navegador | Opcional se faltar uma capacidade de QA; a ferramenta de navegador já disponível e os testes Playwright do repo podem atender | Não instalar outra skill como requisito artificial |
 | Skill própria do AscentIQ | Opcional somente se as instruções do repo não forem suficientes | Registrar invariantes do domínio e fluxo de manutenção, sem duplicar documentação |
@@ -335,17 +358,30 @@ Skills são instruções para o agente desenvolvedor, não dependências que o n
 
 Fontes verificadas: [skills shadcn](https://ui.shadcn.com/docs/skills), [skills Vercel](https://github.com/vercel-labs/agent-skills), [mudança das skills Next](https://github.com/vercel-labs/next-skills) e [agentes no Next](https://nextjs.org/docs/app/guides/ai-agents).
 
-Procedimento na etapa de preparação:
+Preparação realizada e instruções de manutenção:
 
-1. Conferir skills já instaladas e paths atuais dos repositórios oficiais; ler os arquivos antes de executar scripts.
-2. Instalar apenas as ausentes e adequadas, usando skill-installer ou o fluxo oficial compatível com o agente. Fixar/registrar commit ou release de origem e não atualizar silenciosamente durante uma implementação.
-3. Registrar comandos de setup, versões e localização no README de desenvolvimento. Conferir que serão descobertas na sessão usada para implementar.
-4. Criar instruções duráveis do frontend em `AGENTS.md`: proibição de styled-components/CSS-in-JS, contrato API, layout, 10/15, dados ausentes, privacidade, comandos e critérios de validação.
-5. Preservar as instruções/docs geradas pelo Next sem sobrescrever regras locais; nenhuma orientação de skill pode contrariar os requisitos do usuário.
+1. As três skills acima estão instaladas e são descobertas na sessão de manutenção. Elas não entram no bundle nem exigem serviço pago.
+2. `AGENTS.md` registra proibição de styled-components/CSS-in-JS, contrato API, layout, 10/15, dados ausentes, privacidade, comandos e critérios de validação; README registra a nova rotina de desenvolvimento.
+3. Antes de alterar convenções Next, consultar as docs embarcadas correspondentes à versão instalada. Nenhuma orientação de skill pode contrariar os requisitos do usuário.
+4. Em atualizações futuras das skills, registrar a revisão upstream exata e não atualizar silenciosamente durante uma implementação. As versões de metadados e os paths atuais não identificam sozinhos um commit upstream; este documento não inventa hashes de origem não registrados.
 
 Não há necessidade identificada de skill separada para Tailwind. A documentação oficial e a skill shadcn cobrem o setup proposto. Não instalar skills de hosting/Vercel, Sites ou serviços pagos para este aplicativo local Docker.
 
 ## 12. Etapas de execução e entregáveis
+
+As etapas abaixo conservam a sequência e os critérios do plano original. O estado após a implementação é:
+
+| Etapa | Estado |
+|---|---|
+| 0 — Baseline/preparação | Realizada; referência funcional, versões, skills e rollback preparados |
+| 1 — Fundação | Implementada; build/lint/types/style ban aprovados |
+| 2 — Sessão/shell | Implementada; rotas, cookies, CSRF, CSP, foco e logout cobertos por testes; retorno seguro do login validado e republicado |
+| 3 — Dashboard/frequência | Implementada; contagem por categorias, ausência de labels e interação mobile validadas |
+| 4 — Nutrition/objetivos | Implementada; estimativa automática/retry/rascunho e consulta de plano cobertos por testes; provedor real não disparado |
+| 5 — Sleep/Workouts | Implementada; histórico completo/paginação, distâncias variáveis, cálculos e análises geradas/importadas cobertos por testes sintéticos |
+| 6 — Conta/dados/documentos/assistente | Módulos migrados; assistente/consentimento validados; fluxos externos, upload/export e reconciliação não têm cobertura E2E integral nesta rodada |
+| 7 — PWA/revisão/CI | CI atualizado; QA sintético, smokes reais desktop/mobile e worker/offline/cache público aprovados; HTTPS LAN continua pendente |
+| 8 — Corte/limpeza | Frontend oficial promovido e containers publicados/saudáveis; leituras reais e dados preservados; imagem de rollback verificada em container temporário sem trocar o serviço ativo |
 
 ### Etapa 0 — Baseline e preparação
 
@@ -359,7 +395,7 @@ Entrega: baseline, matriz de paridade, política de dependências e plano de QA.
 
 ### Etapa 1 — Fundação Next e componentes
 
-- Criar `web-next` com App Router, TypeScript strict, Tailwind v4, aliases, lint/formatação e lockfile.
+- Criar inicialmente `web-next` com App Router, TypeScript strict, Tailwind v4, aliases, lint/formatação e lockfile; promover para `dashboard/web` depois da validação, como já realizado.
 - Configurar shadcn, base única, tokens, logo, componentes compartilhados e proibição automatizada de CSS-in-JS.
 - Configurar QueryClient, cliente API tipado, datas e camada server-only.
 - Preparar Docker/preview independente, ambiente sintético e healthchecks.
@@ -427,11 +463,39 @@ Entrega: evidências por funcionalidade e candidato de release completo, ainda c
 - Atualizar Docker, Compose, README, instruções de agentes e referência da arquitetura.
 - Manter imagem anterior recuperável durante a estabilização e testar o procedimento de rollback.
 
-Entrega: aplicação inteira na nova stack, repositório consistente e checklist de conclusão preenchido.
+Entrega: aplicação inteira na nova stack, repositório consistente e checklist de conclusão preenchido. A publicação e a promoção já ocorreram; os itens operacionais ainda abertos constam nas seções 14 e 15.
 
 ## 13. Testes e critérios de aceitação
 
 Os testes protegem comportamento e dados; não criar snapshots de cada classe Tailwind ou testes que apenas reproduzem a implementação.
+
+### Evidências realizadas nesta migração
+
+| Verificação | Resultado registrado |
+|---|---|
+| ESLint | Aprovado com `--max-warnings 0` |
+| TypeScript | `next typegen && tsc --noEmit` aprovado, com TypeScript 6.0.3 e `strict: true` |
+| Formatação | `npm run format:check` aprovado com a fonte final do retorno de login |
+| Proibição de estilos | `npm run check:styles` aprovado: nenhum styled-components, nenhum CSS-in-JS direto; internals Next preservados |
+| Build Next | Builds finais de produção aprovados em Windows e Linux após a correção de login; saída standalone, rotas dinâmicas e sem export estático |
+| Unitários | **17 testes aprovados em 6 arquivos**: 11 de domínio/apresentação e 6 de retorno seguro/login |
+| E2E completo | **28 execuções aprovadas em uma rodada única de 56,4 s**: 22 de plataforma/análises/acessibilidade + 2 de adaptador API + 2 de PWA + 2 de conflito do assistente, em desktop Chromium e mobile Chromium |
+| PWA publicada | **2 execuções reais aprovadas**, desktop/mobile; worker novo, controle, offline genérico e cache limitado aos 6 assets públicos |
+| Containers/leituras reais | Frontend e gateway saudáveis; 6 rotas HTML responderam 200 com CSP nonce/no-store; login + 5 GET reais responderam 200 |
+| Preservação dos dados | Comparação exata do baseline de contagens/revisões de refeições, treinos, sono, objetivos, medidas e check-ins, sem alteração |
+| Navegador publicado | Smokes reais desktop/mobile aprovados nas seis rotas de conteúdo; sem erro de console/hidratação, overflow ou violações axe graves/críticas; acesso LAN respondeu 200 |
+| Retorno após login | Correção republicada; destinos externos e com barra invertida rejeitados no login real; Dashboard/corridas renderizando em localhost/LAN |
+| Rollback isolado | Imagem anterior iniciou em container temporário; HTML Vite e bundle `/assets/*.js` responderam 200; container removido, sem alterar serviços ativos |
+
+A rodada final completa de **28 E2E aprovados** substitui como evidência de fechamento as rodadas parciais anteriores de 22 principais, 2 de proxy e 2 PWA. O harness em `tests/e2e/fixtures/synthetic-server.mjs` usa API em 18788, gateway de teste em 18789 e Next de produção em 18790, com sessão HttpOnly e estado isolado por login. Valida Host/Origin/header, simula IA e persiste os registros sintéticos; não acessa o banco pessoal nem fornecedores externos. Smokes publicados usaram leitura, sem gerar estimativas ou importações reais.
+
+Cobertura efetiva dos E2E: login e acesso direto, corrida/força, CSRF, salvamento com estimativa automática, pendência/retry sem duplicação, proteção dirty/foco, sono com período completo e score zero, frequência por categoria com toque, assistente não modal/consentimento revogado, aviso409 preservado com pergunta e retry/fingerprint atualizado, logout/histórico, análise gerada/importada/persistida e dia sem treino, edição de check-in, consulta do plano e axe sem erros graves/críticos nas quatro áreas principais. A verificação de console/hidratação/CSP e overflow integra o teste de acessibilidade.
+
+Os módulos de documentos/importações/exportações/biblioteca alimentar e CRUD de objetivos estão implementados na UI migrada; a rodada registrada não comprova todos os seus caminhos ponta a ponta. A ampliação desses cenários é trabalho adicional de QA, não uma tela ou funcionalidade deixada por implementar. Chamadas reais de IA e importações de Garmin/Hevy **não foram disparadas** para testes de migração. A suíte Python/PostgreSQL/instalação vazia permanece no workflow; essa preservação não equivale a afirmar que todos os jobs remotos foram reexecutados nesta rodada. A revisão de navegador/PWA e a correção de retorno do login passaram, limitadas aos cenários registrados. Lint/types/formatação/style ban foram reexecutados e aprovados com a fonte final do login. O inventário final corrigiu registro do service worker, CSP `worker-src 'self'` e retorno seguro; não foi identificada outra regressão bloqueante na rodada de fechamento.
+
+### QA complementar dos fluxos menos frequentes
+
+O [QA complementar](QA_NEXT_FLUXOS_COMPLEMENTARES.md) exercitou importações CSV/GPX/FIT e limites, reconciliação em outra página, exportações JSON/ZIP, upload/revisão/remoção de documentos, CRUD de medidas com revisão409, escopos e importação de respostas do assistente. Usou componentes e CSS reais com uma API sintética isolada; verificou payloads, IDs, consentimentos, rascunhos e clique duplo. Também validou o aviso409 persistente do assistente, mudança de escopo, falha503 de consulta e retry com contexto atualizado. Esses testes de cliente complementam a suíte E2E versionada e não fazem chamadas a fornecedores nem validam parsers do backend.
 
 ### Automação
 
@@ -477,32 +541,69 @@ Critérios: console sem erros de hidratação/React, nenhum bloqueio de uso por 
 
 ## 14. Docker, publicação e rollback
 
-Usar Next standalone em container Node 24 LTS, multi-stage e usuário sem privilégios. Copiar output standalone, assets estáticos e `public` necessários. Não rodar `next dev` em produção.
+Implementado Next standalone em container Node 24 LTS, multi-stage e usuário `node` sem privilégios. O runtime copia `.next/standalone`, `.next/static` e `public`, executa `node server.js` e tem healthcheck em `/healthz`. Não usa `next dev` em produção.
 
-Adaptar `dashboard/Dockerfile.web`, `dashboard/nginx.conf`, `compose.yaml` e workflow. Gateway encaminha páginas/assets ao Node e `/api/*` à API. Preservar host público, timeouts atuais de IA e buffering adequado; streaming do Next também deve ser considerado pelo proxy, mesmo sem streaming de IA.
+Arquivos oficiais: `dashboard/Dockerfile.web`, `dashboard/Dockerfile.gateway`, `dashboard/nginx.conf`, `compose.yaml` e `.github/workflows/platform.yml`. O serviço `frontend` escuta na porta interna 3000 e usa `BACKEND_INTERNAL_URL=http://api:8788`; o serviço `web` publica a porta atual 8787 e encaminha páginas/assets ao Node e `/api/*` diretamente à API. Node/API não ganharam portas públicas. A publicação existente em localhost e a configuração de acesso LAN foram mantidas no ambiente real.
 
-Preservar o contrato de upload atual: payload JSON com texto para CSV/GPX e base64 para FIT, documentos e imagens. Configurar limite de corpo do gateway pelo tamanho transmitido, considerando a expansão base64 e o envelope JSON, além dos limites de arquivos aplicados no backend. Validar imagens, documentos e importações grandes sem trocar o contrato para multipart durante a migração. Referências do contrato: `dashboard/imports.py`, `dashboard/personal_api.py`, `Settings.jsx`, `Documents.jsx` e `FoodDiary.jsx`. Não expor Node/API diretamente à rede local como consequência acidental da migração. Preservar a publicação atual do aplicativo e usar porta de preview apenas para validação controlada.
+Bases fixadas por digest:
+
+- Node: `node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1`.
+- Gateway: `nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236`.
+
+O gateway preserva Host, cookies e headers, usa timeouts de 210 s, buffering desabilitado e limite de corpo de 40 MiB. API recebe `Cache-Control: no-store`; Next aplica cache privado e CSP nonce às páginas. Assets versionados preservam o cache apropriado. Frontend/gateway estão `healthy`; seis rotas HTML e cinco leituras API autenticadas passaram no ambiente real. A comparação com o baseline confirmou as mesmas contagens/revisões dos dados existentes. Smoke Playwright real desktop/mobile e ciclo de worker/offline/cache público passaram; o acesso LAN respondeu 200. A correção final de retorno do login foi republicada e revalidada em localhost/LAN.
+
+Foi preservado o contrato de upload: payload JSON com texto para CSV/GPX e base64 para FIT, documentos e imagens. O limite de corpo considera tamanho transmitido, expansão base64 e envelope JSON, além dos limites de arquivo do backend; não houve conversão para multipart. Referências: `dashboard/imports.py`, `dashboard/personal_api.py`, `features/settings/Settings.jsx`, `features/documents/Documents.jsx` e `features/nutrition/FoodDiary.jsx`. O teste integral de uploads grandes e os fluxos externos reais continuam fora da evidência E2E desta rodada; preservação do código/contrato não deve ser apresentada como execução desses casos.
 
 Referência: [self-hosting do Next](https://nextjs.org/docs/app/guides/self-hosting). A arquitetura Docker local continua sendo a escolha do projeto; não há requisito de Vercel/cloud.
 
-Rollback consiste em restabelecer a imagem/configuração de gateway da UI anterior, preservando API, dados e volumes. Como o plano não muda schema nem cálculos, o retorno não deve exigir restaurar banco. Verificar também a compatibilidade do service worker e assets antigos durante corte/retorno.
+Rollback preparado no workspace privado de execução (`athlete-agent`), sem copiar seus dados/configurações para o repositório público:
 
-## 15. Definição de conclusão
+- Imagem da UI anterior: `ascentiq-web-vite-rollback:20261008`.
+- Arquivos de Compose privados: `compose.pre-next.yaml` e `compose.rollback-next.yaml`.
+- Comando a partir desse workspace, somente se for necessário retornar:
 
-- [ ] Versões estáveis rechecadas, compatíveis e fixadas em lockfile.
-- [ ] Next App Router + React + TypeScript + Tailwind + shadcn formam toda a UI ativa.
-- [ ] Nenhum uso/dependência de styled-components; nenhum import/uso ou dependência direta de Emotion, styled-jsx ou outra engine CSS-in-JS na UI; CI aplica essas regras sem alterar internals obrigatórios do Next.
-- [ ] Todos os itens da matriz funcional passaram, incluindo dados, documentos, biblioteca e assistente.
-- [ ] Layout recente preservado: topbar total, boxed, sidebar natural, conta à direita e títulos internos.
-- [ ] Listas limitadas a 10/15; gráficos/totais continuam cobrindo o período inteiro.
-- [ ] Login/sessão/Origin/Host, CSP, privacidade e imagens autenticadas verificados.
-- [ ] Atualizações sem flicker, sem duplicação e sem perda de rascunhos.
-- [ ] IA automática nas refeições, metas/contextos e respostas concisas preservados.
-- [ ] PWA migrada e cache privado proibido; status da dependência HTTPS documentado honestamente.
-- [ ] QA desktop/mobile/teclado e testes relevantes passaram.
-- [ ] Backend/CI atual preservado e runtime Docker novo validado.
-- [ ] Skills úteis preparadas, docs vinculadas à versão e instruções de manutenção registradas.
-- [ ] Vite e CSS legado retirados da aplicação ativa após a paridade completa.
-- [ ] Publicação na origem atual e rollback verificados; nenhum dado pessoal entrou no Git.
+```powershell
+docker compose -f compose.pre-next.yaml -f compose.rollback-next.yaml up -d --no-deps --no-build web
+```
 
-Durante a implementação, resolver decisões rotineiras dentro dos requisitos definidos. Não ampliar o escopo para novos cálculos, novos serviços pagos ou funcionalidades de produto durante a troca de stack. Este documento registra o planejamento solicitado; sua criação não inicia a migração nem a instalação de skills.
+Esse retorno restabelece a UI/gateway anterior sem reconstruir imagens, recriar API ou tocar banco/volumes. A migração de UI não muda schema nem cálculos.
+
+**Verificação isolada realizada:** a imagem antiga, ID `sha256:2414860da93f2207eca3daee84b8b6d754ae28d8d6e49da30582449425fe1cb6`, iniciou no container temporário `ascentiq-rollback-smoke`, rede `ascentiq_default`, porta somente `127.0.0.1:18791`. O HTML e o bundle Vite `/assets/*.js` responderam HTTP 200, sem assets Next. Não foram montados volumes de dados nem enviadas requisições autenticadas/mutações. O container foi removido pelo ID exato e a consulta final confirmou ausência do nome; o serviço publicado permaneceu intacto.
+
+**Limite dessa evidência:** foi validado startup e entrega dos assets da imagem anterior, não um cutover dos arquivos Compose nem a interação da UI antiga com a sessão/worker atual. O retorno integral do serviço em uso não foi exercitado. Em eventual rollback, verificar acesso autenticado, worker e assets na origem atual antes de declarar o retorno concluído.
+
+## 15. Checklist de conclusão e pendências
+
+Os itens concluídos abaixo se referem à implementação e às evidências descritas neste documento. A UI foi entregue e validada nos cenários registrados. **Itens de validação adicional não marcados não representam funcionalidades deixadas por implementar**: distinguem testes ainda não executados de código migrado e operacional. Não equivaler implementação a uma execução de todos os serviços externos.
+
+- [x] Versões compatíveis e fixadas em lockfile, incluindo TypeScript 6.0.3 por suporte oficial da cadeia ESLint instalada.
+- [x] Next App Router + React + Tailwind + shadcn formam toda a UI oficial; infraestrutura/primitives em TypeScript estrito e domínio JS/JSX preservado.
+- [x] Nenhum styled-components; nenhum import/uso ou dependência direta de CSS-in-JS na UI; guard de CI sem alterar internals obrigatórios do Next.
+- [x] Todas as áreas e modais da matriz foram migrados para módulos de domínio; backend e contratos preservados.
+- [ ] QA adicional: todos os caminhos da matriz exercitados ponta a ponta, incluindo uploads/documentos, biblioteca, importação/reconciliação e exportação.
+- [x] Layout aprovado implementado: topbar total, boxed, sidebar natural, conta à direita e títulos internos.
+- [x] Paginação de 10/15 preservada; gráficos/totais continuam usando o período inteiro, com casos de sono e treinos validados.
+- [x] Login/sessão/Origin/Host/CSP/no-store verificados no harness; login e leituras reais aprovados após publicação.
+- [ ] QA adicional: fotos/documentos autenticados e limites de upload exercitados integralmente no ambiente publicado.
+- [x] Proteção de rascunho, foco, ausência de duplicação no retry e persistência do assistente validadas em desktop/mobile sintéticos.
+- [x] IA automática ao salvar refeição, pendência/retry, fingerprint e geração/importação de análise preservados e testados com IA simulada.
+- [ ] QA externo opcional: chamadas reais de IA e importações verificadas em ambiente isolado; não foram disparadas para testar esta migração.
+- [x] Registro/controle de worker, offline público e cache restrito confirmados no harness e no runtime publicado, em desktop/mobile.
+- [x] Política de cache público restrito e identidade da PWA preservadas no código; dependência de HTTPS LAN documentada.
+- [ ] Instalação PWA em mobile pela LAN validada com HTTPS confiável nos dispositivos usados.
+- [x] Lint/types/formatação/style ban, builds finais Windows/Linux, 17 unitários e 28 E2E em uma execução completa passaram.
+- [x] Axe sem erros graves/críticos nas quatro áreas principais; sem erros de hidratação/CSP ou overflow nos cenários sintéticos desktop/mobile.
+- [x] Smoke final Playwright real desktop/mobile concluído nas seis rotas; acesso LAN respondeu 200.
+- [x] Última correção de retorno seguro após login validada em 6 unitários novos; total final de 17 unitários e build Windows aprovados.
+- [x] Rodada E2E conjunta e republicação da última correção de login concluídas; retorno real validado em localhost/LAN.
+- [x] Backend e seus jobs de CI preservados; Docker frontend/gateway publicados e saudáveis.
+- [x] Skills úteis instaladas e disponíveis; docs da versão Next e instruções de manutenção registradas em `AGENTS.md`/README.
+- [x] Caminho oficial `dashboard/web` promovido; Vite e entrada/CSS legados retirados da UI ativa.
+- [x] Publicação na origem atual e preservação exata das contagens/revisões dos dados existentes verificadas.
+- [x] Imagem/configurações privadas de rollback preparadas.
+- [x] Startup da imagem de rollback e HTML/bundle antigos verificados em container temporário; limpeza concluída sem alterar o serviço ativo.
+- [ ] Cutover integral de rollback exercitado na origem atual, incluindo sessão/worker/assets; o smoke isolado não prova esse caso.
+
+**Fechamento operacional concluído:** publicação, preservação dos dados, navegação real desktop/mobile, ciclo público da PWA e retorno seguro do login foram verificados após os checks finais. Não há funcionalidade de UI pendente identificada nessa revisão. A instalação mobile pela LAN permanece dependente de HTTPS confiável. A ampliação de cobertura para fluxos menos frequentes e um cutover integral de rollback devem permanecer rastreáveis como validações adicionais; não marcar validação integral sem evidência.
+
+Não ampliar esta migração para novos cálculos, serviços pagos ou funcionalidades de produto. Os testes de aceitação atuais não exigiram importações externas nem consumo de IA real, e este documento não autoriza dispará-los automaticamente.
