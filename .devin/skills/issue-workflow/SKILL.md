@@ -20,6 +20,7 @@ Work the GitHub issue the user named, following these stages in order. Do not sk
 
 ## 1. Understand
 - `gh issue view <n>` and read the body and existing comments.
+- Create the issue branch now (see stage 5) so all work lands in its own PR.
 - Read every file the issue names, plus their callers (`grep` for the symbol). Do not plan from the issue text alone.
 - If the issue is ambiguous or you find the premise is wrong, stop and tell the user before planning.
 
@@ -42,6 +43,10 @@ The plan is in Brazilian Portuguese, like the issues.
 - If the change touches the frontend contract, also run `npm run typecheck` and `npm test` in `dashboard/web`.
 
 ## 5. Land
-- Commit on the current branch with a message that explains *why*, ending with `Refs #<n>`.
-- Post a closing comment on the issue summarizing what changed, test evidence (counts), and anything left for follow-up.
-- Do not push and do not close the issue unless the user asked for it.
+- **One branch and one pull request per issue.** Before touching code, create `issue-<n>-<short-slug>` from an
+  up-to-date `main`. Never stack several issues on the same branch.
+- Commit with a message that explains *why*, ending with `Refs #<n>`.
+- Push the branch and open the PR with `gh pr create`, body in Brazilian Portuguese: summary, test evidence
+  (counts), production notes (migrations, env changes) and `Closes #<n>`.
+- Post a closing comment on the issue linking the PR and summarizing what changed and anything left for follow-up.
+- Do not merge; the user reviews and merges.

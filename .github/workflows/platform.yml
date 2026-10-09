@@ -59,6 +59,8 @@ jobs:
         working-directory: dashboard/web
       - run: npm run contracts:check
         working-directory: dashboard/web
+      - run: npm test
+        working-directory: dashboard/web
       - run: npm run check:styles
         working-directory: dashboard/web
       - run: npm run format:check
