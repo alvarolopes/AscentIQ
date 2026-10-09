@@ -16,7 +16,6 @@ from dashboard.repository import (
     PostgresRepository,
     connect,
     contents_digest,
-    identity,
     operational_db,
     operational_lock,
     read_dataset,
@@ -84,12 +83,6 @@ class LocalRepositoryTests(unittest.TestCase):
         finally:
             CURRENT.reset(token)
 
-    def test_provider_identity_survives_title_change(self):
-        self.assertEqual(
-            identity({"garmin_activity_id": "test-id", "name": "old"}),
-            identity({"garmin_activity_id": "test-id", "name": "new"}),
-        )
-
     def test_digest_checks_every_original_byte(self):
         self.assertNotEqual(
             contents_digest({"data/a.json": b'{"x":1}'}), contents_digest({"data/a.json": b'{ "x":1 }'})
@@ -142,12 +135,7 @@ class PostgresIntegrationTests(unittest.TestCase):
         again = repo.publish(files, reason="synthetic", expected=revision)
         self.assertEqual(revision, again)
         self.assertEqual(repo.files()[1], files)
-        self.assertEqual(repo.counts()["activities"], 1)
-        with connect() as conn:
-            row = conn.execute(
-                "SELECT avg_hr,official_gain_m FROM athlete.activities WHERE revision_id=%s", (revision,)
-            ).fetchone()
-            self.assertEqual(row, (None, 0.0))
+        self.assertEqual(repo.counts()["datasets"], 3)
         with tempfile.TemporaryDirectory() as name:
             repo.export(Path(name))
             self.assertEqual(
@@ -162,23 +150,41 @@ class PostgresIntegrationTests(unittest.TestCase):
             repo.publish(self.fixture("stale"), reason="synthetic", expected=initial)
         self.assertEqual(repo.active(), revision)
 
-    def test_failed_projection_rolls_back(self):
+    def test_failed_validation_rolls_back(self):
         repo = PostgresRepository()
         initial = repo.active()
-        with patch.object(repo, "_project", side_effect=RuntimeError("synthetic failure")):
+        with patch("dashboard.repository.validate_datasets", side_effect=RuntimeError("synthetic failure")):
             with self.assertRaises(RuntimeError):
                 repo.publish(self.fixture("failed"), reason="synthetic", expected=initial)
         self.assertEqual(repo.active(), initial)
 
-    def test_duplicate_provider_ids_require_review(self):
+    def test_publish_rejects_duplicate_garmin_and_hevy_ids(self):
         repo = PostgresRepository()
         initial = repo.active()
         files = self.fixture("duplicate")
         row = json.loads(files["data/training_history.json"])[0]
         files["data/training_history.json"] = json.dumps([row, row]).encode()
-        with self.assertRaises(Exception):  # noqa: B017 - psycopg.errors.UniqueViolation no Postgres
+        with self.assertRaisesRegex(RuntimeError, "Duplicate Garmin activity ID requires review"):
             repo.publish(files, reason="synthetic", expected=initial)
         self.assertEqual(repo.active(), initial)
+
+        files = self.fixture("duplicate")
+        workout = {"hevy_workout_id": "dup-hevy", "exercises": []}
+        files["data/hevy_workouts.json"] = json.dumps([workout, workout]).encode()
+        with self.assertRaisesRegex(RuntimeError, "Duplicate Hevy workout ID requires review"):
+            repo.publish(files, reason="synthetic", expected=initial)
+        self.assertEqual(repo.active(), initial)
+
+    def test_projection_tables_are_gone(self):
+        with connect() as conn:
+            tables = {
+                row[0]
+                for row in conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='athlete'")
+            }
+        self.assertEqual(
+            tables,
+            {"schema_migrations", "revisions", "state", "dataset_blobs", "datasets", "documents", "reports"},
+        )
 
     def test_operational_queue_uses_postgres(self):
         with operational_db() as conn:
@@ -188,7 +194,7 @@ class PostgresIntegrationTests(unittest.TestCase):
                 conn.execute("SELECT value FROM settings WHERE key=%s", ("test-setting",)).fetchone()[0], "1"
             )
 
-    def test_strength_sets_and_provider_link_preserved(self):
+    def test_counts_reflect_stored_artifacts(self):
         repo = PostgresRepository()
         files = self.fixture("strength-garmin")
         workout = {
@@ -216,15 +222,9 @@ class PostgresIntegrationTests(unittest.TestCase):
             ]
         ).encode()
         revision = repo.publish(files, reason="synthetic", expected=repo.active())
-        self.assertEqual(repo.counts()["strength_sessions"], 1)
-        self.assertEqual(repo.counts()["exercise_sets"], 2)
-        with connect() as conn:
-            self.assertEqual(
-                conn.execute(
-                    "SELECT count(DISTINCT activity_id) FROM athlete.activity_sources WHERE revision_id=%s", (revision,)
-                ).fetchone()[0],
-                1,
-            )
+        self.assertEqual(repo.counts()["datasets"], 3)
+        self.assertEqual(repo.files()[1], files)
+        self.assertIsNotNone(revision)
 
     def test_publish_invalidates_files_cache(self):
         class Recording:

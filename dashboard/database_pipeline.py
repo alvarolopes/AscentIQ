@@ -111,7 +111,6 @@ def run_database_pipeline(
                     reason=job.get("reason", job["mode"]),
                     expected=revision,
                     warnings=warnings,
-                    snapshot=snapshot,
                     report=report,
                     documents=document_manifest(root),
                 )

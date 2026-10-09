@@ -62,7 +62,6 @@ def import_data(root):
         read_files(root),
         reason="json-migration",
         expected=repo.active(),
-        snapshot=build_snapshot(root),
         documents=document_manifest(root),
     )
     from psycopg.types.json import Jsonb

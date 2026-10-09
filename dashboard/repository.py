@@ -9,7 +9,6 @@ import threading
 import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,32 +118,18 @@ def contents_digest(files):
     return digest.hexdigest()
 
 
-def number(value):
-    return None if value is None or value == "" else float(value)
-
-
-def duration(row):
-    if row.get("duration_seconds") is not None:
-        return number(row["duration_seconds"])
-    if row.get("elapsed_time") is None:
-        return None
-    seconds = 0.0
-    for part in str(row["elapsed_time"]).split(":"):
-        seconds = seconds * 60 + float(part)
-    return seconds
-
-
-def day(value):
-    return date.fromisoformat(str(value)[:10]) if value else None
-
-
-def identity(row, namespace="activity", ordinal=None):
-    key = (
-        row.get("garmin_activity_id") or row.get("activity_key") or row.get("strava_activity_id") or row.get("filename")
-    )
-    if key is None:
-        key = canonical([row.get("date_time") or row.get("date"), row.get("type"), row.get("name"), ordinal])
-    return uuid.uuid5(ATHLETE_ID, namespace + ":" + str(key))
+def validate_datasets(values):
+    garmin = set()
+    for row in values.get("data/training_history.json") or []:
+        external = row.get("garmin_activity_id")
+        if external is None:
+            continue
+        if str(external) in garmin:
+            raise RuntimeError("Duplicate Garmin activity ID requires review")
+        garmin.add(str(external))
+    hevy_rows = values.get("data/hevy_workouts.json") or []
+    if len({str(row["hevy_workout_id"]) for row in hevy_rows}) != len(hevy_rows):
+        raise RuntimeError("Duplicate Hevy workout ID requires review")
 
 
 def migrate():
@@ -199,7 +184,7 @@ class PostgresRepository:
             dest.write_bytes(raw)
         return revision
 
-    def publish(self, files, *, reason, expected=None, warnings=None, snapshot=None, documents=None, report=None):
+    def publish(self, files, *, reason, expected=None, warnings=None, documents=None, report=None):
         from psycopg.types.json import Jsonb
 
         digest = contents_digest(files)
@@ -207,6 +192,7 @@ class PostgresRepository:
             digest = hashlib.sha256((digest + canonical(documents)).encode()).hexdigest()
         revision = uuid.uuid5(ATHLETE_ID, digest)
         values = {path: json.loads(raw.decode("utf-8-sig")) for path, raw in files.items()}
+        validate_datasets(values)
         with connect() as conn:
             conn.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_ID,))
             current = conn.execute("SELECT active_revision FROM athlete.state WHERE singleton FOR UPDATE").fetchone()[0]
@@ -224,27 +210,11 @@ class PostgresRepository:
                         (key, Jsonb(values[path]), raw),
                     )
                     conn.execute("INSERT INTO athlete.datasets VALUES(%s,%s,%s)", (revision, path, key))
-                self._project(conn, revision, values)
             for path, info in (documents or {}).items():
                 conn.execute(
                     "INSERT INTO athlete.documents VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                     (revision, path, info["sha256"], info["bytes"]),
                 )
-            if snapshot:
-                for row in snapshot["performance"]["series"]:
-                    conn.execute(
-                        "INSERT INTO athlete.daily_metrics VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-                        (
-                            revision,
-                            day(row["date"]),
-                            snapshot["model_version"],
-                            row.get("daily_load"),
-                            row.get("fitness"),
-                            row.get("fatigue"),
-                            row.get("form"),
-                            Jsonb(row),
-                        ),
-                    )
             if report:
                 conn.execute(
                     "INSERT INTO athlete.reports(id,revision_id,metadata) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING",
@@ -254,178 +224,14 @@ class PostgresRepository:
         FILES_CACHE.invalidate()
         return revision
 
-    def _project(self, conn, revision, values):
-        from psycopg.types.json import Jsonb
-
-        get = lambda name, default: values.get("data/" + name + ".json", default)
-        conn.execute(
-            "INSERT INTO athlete.profiles VALUES(%s,%s,%s,%s,%s)",
-            (
-                revision,
-                ATHLETE_ID,
-                Jsonb(get("athlete_profile", {})),
-                Jsonb(get("athlete_preferences", {})),
-                Jsonb(get("season_goals", {})),
-            ),
-        )
-        garmin, activities = {}, []
-        for index, row in enumerate(get("training_history", [])):
-            key = identity(row, ordinal=index)
-            conn.execute(
-                "INSERT INTO athlete.activities VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (
-                    revision,
-                    key,
-                    day(row.get("date")),
-                    row.get("date_time"),
-                    row.get("type"),
-                    row.get("name"),
-                    number(row.get("distance_km")),
-                    duration(row),
-                    number(row.get("avg_hr")),
-                    number(row.get("max_hr")),
-                    number(row.get("watch_elevation_gain_m")),
-                    number(row.get("official_elevation_gain_m")),
-                    Jsonb(row),
-                ),
-            )
-            activities.append((key, row))
-            if row.get("garmin_activity_id") is not None:
-                external = str(row["garmin_activity_id"])
-                if external in garmin:
-                    raise RuntimeError("Duplicate Garmin activity ID requires review")
-                garmin[external] = key
-                conn.execute(
-                    "INSERT INTO athlete.activity_sources VALUES(%s,%s,%s,%s,%s)",
-                    (revision, key, "garmin", external, Jsonb(row)),
-                )
-        signature = lambda row: canonical([row.get(k) for k in ("date", "type", "name", "distance_km", "elapsed_time")])
-        for index, row in enumerate(get("race_history", [])):
-            candidates = [key for key, activity in activities if signature(activity) == signature(row)]
-            linked = garmin.get(str(row.get("garmin_activity_id"))) or (candidates[0] if len(candidates) == 1 else None)
-            conn.execute("INSERT INTO athlete.races VALUES(%s,%s,%s,%s)", (revision, index, linked, Jsonb(row)))
-        hevy_rows = get("hevy_workouts", [])
-        hevy = {str(x["hevy_workout_id"]): x for x in hevy_rows}
-        if len(hevy) != len(hevy_rows):
-            raise RuntimeError("Duplicate Hevy workout ID requires review")
-        linked_hevy = {}
-        for index, row in enumerate(get("strength_training_consolidated", [])):
-            hid, gid = row.get("hevy_workout_id"), row.get("garmin_activity_id")
-            sid = uuid.uuid5(ATHLETE_ID, "strength:" + str(hid or gid or index))
-            aid = garmin.get(str(gid))
-            if hid is not None:
-                linked_hevy[str(hid)] = aid
-            conn.execute(
-                "INSERT INTO athlete.strength_sessions VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (
-                    revision,
-                    sid,
-                    aid,
-                    day(row.get("date")),
-                    row.get("garmin_match_status"),
-                    row.get("hevy_title"),
-                    row.get("hevy_total_sets"),
-                    row.get("hevy_working_sets"),
-                    row.get("hevy_total_reps"),
-                    number(row.get("hevy_total_volume_kg")),
-                    Jsonb(row),
-                ),
-            )
-            for ei, exercise in enumerate(hevy.get(str(hid), {}).get("exercises", [])):
-                conn.execute(
-                    "INSERT INTO athlete.exercises VALUES(%s,%s,%s,%s,%s)",
-                    (revision, sid, ei, exercise.get("name"), Jsonb(exercise)),
-                )
-                for si, item in enumerate(exercise.get("sets", [])):
-                    conn.execute(
-                        "INSERT INTO athlete.exercise_sets VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (
-                            revision,
-                            sid,
-                            ei,
-                            si,
-                            item.get("set_type"),
-                            number(item.get("weight_kg")),
-                            item.get("reps"),
-                            number(item.get("rpe")),
-                            Jsonb(item),
-                        ),
-                    )
-        for external, row in hevy.items():
-            conn.execute(
-                "INSERT INTO athlete.activity_sources VALUES(%s,%s,%s,%s,%s)",
-                (revision, linked_hevy.get(external), "hevy", external, Jsonb(row)),
-            )
-        body = get("body_metrics", {})
-        measurements = list(body.get("history") or [])
-        if body.get("current"):
-            measurements.append({"date": body.get("reference_date"), "reference": "current", **body["current"]})
-        for index, row in enumerate(measurements):
-            conn.execute(
-                "INSERT INTO athlete.body_measurements VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
-                (
-                    revision,
-                    index,
-                    day(row.get("date")),
-                    number(row.get("weight_kg")),
-                    number(row.get("waist_cm")),
-                    number(row.get("body_fat_pct")),
-                    number(row.get("lean_mass_kg")),
-                    Jsonb(row),
-                ),
-            )
-        for index, row in enumerate(get("medical_history", {}).get("records", [])):
-            conn.execute(
-                "INSERT INTO athlete.medical_records VALUES(%s,%s,%s,%s,%s,%s)",
-                (revision, index, day(row.get("date")), row.get("type"), row.get("label"), Jsonb(row)),
-            )
-
-            def leaves(value, prefix=""):
-                if isinstance(value, dict):
-                    for k, v in value.items():
-                        yield from leaves(v, prefix + "/" + k)
-                else:
-                    yield prefix, value
-
-            for code, result in leaves(row):
-                conn.execute(
-                    "INSERT INTO athlete.medical_observations VALUES(%s,%s,%s,%s)",
-                    (revision, index, code, Jsonb(result)),
-                )
-        for path, payload in values.items():
-            if path.startswith("data/") and "sleep" in path and isinstance(payload, (dict, list)):
-                rows = (
-                    payload if isinstance(payload, list) else payload.get("daily_records", payload.get("records", []))
-                )
-                if isinstance(rows, list):
-                    for index, row in enumerate(rows):
-                        if isinstance(row, dict):
-                            conn.execute(
-                                "INSERT INTO athlete.sleep_records VALUES(%s,%s,%s,%s,%s)",
-                                (
-                                    revision,
-                                    path,
-                                    index,
-                                    str(row.get("date") or row.get("calendar_date") or ""),
-                                    Jsonb(row),
-                                ),
-                            )
-
     def counts(self, revision=None):
         from psycopg import sql
 
         revision = revision or self.active()
         tables = (
             "datasets",
-            "activities",
-            "races",
-            "strength_sessions",
-            "exercises",
-            "exercise_sets",
-            "body_measurements",
-            "medical_records",
-            "daily_metrics",
             "documents",
+            "reports",
         )
         with connect() as conn:
             return {

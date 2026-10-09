@@ -8,11 +8,33 @@ or databases. Administrative credentials are passed only to the maintenance
 service, not the running API. This is a single-athlete local deployment, not a
 multi-tenant hosted service.
 
-Versioned relational projections cover activities, provider IDs, races,
-strength sessions, exercises, sets, measurements, medical observations, sleep,
-daily performance metrics, and document checksums. Immutable dataset objects
-also retain JSONB and original JSON bytes. Large FIT/GPX/PDF files remain in the
-private file storage; the database tracks their checksums and relative paths.
+Every published revision stores each dataset as an immutable JSONB object plus
+its original bytes, with document checksums and report metadata alongside.
+Large FIT/GPX/PDF files remain in the private file storage; the database tracks
+their checksums and relative paths.
+
+## Decision: relational projections removed (issue #18)
+
+The earlier `athlete.*` projection tables (activities, races, strength
+sessions, exercise sets, sources, measurements, medical records and
+observations, sleep records, daily metrics) were dropped by migration 006.
+No product code ever read them: every page renders from the snapshot built on
+the versioned blobs, and the per-revision cache (#12) already covers read
+latency. On the reference installation they held ~115 MB of unread derived
+rows against 17 MB of blobs, and each `publish()` rewrote all of them. Keeping
+a second read path would have required duplicating the Python-side
+classification logic (`snapshot.activity_kind`, strength/Garmin consolidation,
+`elevation_source`) in SQL. Duplicate Garmin/Hevy provider IDs are still
+rejected by `publish()` via `validate_datasets` over the incoming JSON.
+
+The `athlete` schema now holds only `schema_migrations`, `revisions`, `state`,
+`dataset_blobs`, `datasets`, `documents` and `reports` (plus the `operations`
+schema). Migration 006 deletes ~115 MB of derived data that is fully
+recomputable from `dataset_blobs`, which are unchanged — take a backup before
+upgrading, as with any destructive migration. Old `pg_dump` backups that still
+contain the dropped tables restore cleanly because `migrate()` applies 006
+afterwards. External tools querying `athlete.activities` or siblings (none
+exist in this repository) would stop working.
 
 The original JSON datasets are migration references, not the current source of
 truth. They are mounted read-only in the API. Calculations use an isolated

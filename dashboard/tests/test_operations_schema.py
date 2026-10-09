@@ -47,6 +47,15 @@ class OperationsSchemaTests(unittest.TestCase):
                 "personal_artifacts",
             },
         )
+        with repository.connect() as conn:
+            athlete_tables = {
+                row[0]
+                for row in conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='athlete'")
+            }
+        self.assertEqual(
+            athlete_tables,
+            {"schema_migrations", "revisions", "state", "dataset_blobs", "datasets", "documents", "reports"},
+        )
 
     def test_no_sqlite_or_create_table_in_runtime_code(self):
         sources = Path(repository.__file__).parent
