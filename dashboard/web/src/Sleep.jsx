@@ -15,11 +15,11 @@ export default function Sleep({data, Chart, Card, Panel}) {
   const rows = invalid ? [] : sleepDays(records,from,to);
   const duration = sleepAverage(rows,'duration_minutes'), score = sleepAverage(rows,'score');
   const recorded = rows.filter(row=>row.recorded).length;
-  const latest = data.sleep?.summary?.latest_duration_daily;
+
   function period(days) {setFrom(days ? before(end,days-1) : earliest);setTo(end);}
   return <>
-    <div className="page-title"><div className="eyebrow">GARMIN / HISTÓRICO DIÁRIO</div><h1>Sono, dia a dia.</h1><p>Duração, pontuação e demais medidas disponíveis no seu histórico local.</p></div>
-    <Panel title="Período do histórico" sub={latest ? `Última duração: ${sleepDuration(latest.duration_minutes)} em ${dayLabel(latest.date)}.` : 'Ainda não há duração de sono registrada.'}>
+
+    <Panel title="Sleep" sub="Período histórico">
       <div className="report-actions">{[7,30,90].map(days=><button key={days} onClick={()=>period(days)}>{days} dias</button>)}<button onClick={()=>period(null)}>Todo o histórico</button></div>
       <div className="filters"><label>De<input type="date" min="2000-01-01" max={end} value={from} onChange={e=>{setFrom(e.target.value);}}/></label><label>Até<input type="date" min="2000-01-01" max={end} value={to} onChange={e=>{setTo(e.target.value);}}/></label></div>
       {invalid && <p className="error" role="alert">Escolha um período válido, de 2000 até hoje, com a data inicial anterior ou igual à final.</p>}

@@ -76,7 +76,7 @@ main { width: 100%; margin: 0; }
 .sync-date { font: 11px var(--sans); }
 .sync-date i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 6px; }
 .content { padding: 22px 24px; }
-.current-goal { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; padding: 14px 16px; border: 1px solid var(--line); border-left: 3px solid var(--green); border-radius: 6px; background: var(--surface); }
+.current-goal { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; margin: 0 0 20px; padding: 20px; border: 1px solid var(--line); border-left: 3px solid var(--green); border-radius: 12px; background: var(--surface); }
 .current-goal strong { font-size: 14px; }
 .current-goal > span:last-child { color: var(--muted); font-size: 11px; }
 .report-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
@@ -288,7 +288,7 @@ footer { display: flex; flex-wrap: wrap; gap: 13px; margin-top: 28px; padding-to
 /* Personal health workflows share the existing private dashboard language. */
 textarea { font:inherit; color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:10px 12px; resize:vertical; line-height:1.6; min-width:0; }
 textarea:focus-visible { outline:2px solid var(--link); outline-offset:3px; }
-.section-tabs { display:flex; flex-wrap:wrap; gap:7px; padding-bottom:17px; margin-bottom:4px; border-bottom:1px solid var(--line); }
+.section-tabs { display:flex; flex-wrap:wrap; gap:7px; padding-bottom:17px; margin-bottom:20px; border-bottom:1px solid var(--line); }
 .section-tabs button { background:transparent; color:var(--muted); border-color:transparent; }
 .section-tabs button:hover { color:var(--ink); border-color:var(--line); }
 .section-tabs button.active { color:var(--ink); background:var(--surface); border-color:var(--line); }
@@ -487,3 +487,8 @@ textarea:focus-visible { outline:2px solid var(--link); outline-offset:3px; }
 
 
 .account-menu{position:relative;color:var(--ink)}.account-menu summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.account-menu summary::-webkit-details-marker{display:none}.account-menu summary:focus-visible{outline:2px solid var(--green);outline-offset:3px}.account-name{font-size:13px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.account-dropdown{position:absolute;right:0;top:calc(100% + 10px);width:240px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 12px 40px #0008;display:flex;flex-direction:column;gap:4px}.account-dropdown strong{padding:10px;font-size:13px;overflow-wrap:anywhere;border-bottom:1px solid var(--line);margin-bottom:6px}.account-dropdown button{justify-content:flex-start;border:0;background:transparent;padding:12px;font-size:14px}.account-dropdown button:hover{background:var(--paper)}.topbar-right{display:flex;align-items:center;gap:20px}@media(max-width:760px){.account-name{display:none}.topbar-right{gap:8px}.account-menu summary{padding:4px 6px;gap:5px}.account-dropdown{width:min(240px,calc(100vw - 24px))}.topbar .brand small{display:none}.topbar .brand>span{font-size:17px}}
+
+.section-tabs .training-analysis-action{margin-left:auto;align-self:center;background:#238636;color:#fff;border-color:#2ea043}.section-tabs .training-analysis-action:hover{background:#2ea043;border-color:#3fb950}
+
+
+.section-tabs + .filters{margin-top:0}.current-goal + .metrics{margin-top:0}
