@@ -4,10 +4,9 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
 
 from dashboard.jobs import JobManager, sleep_schedule_slot
-from dashboard.snapshot import TZ
+from dashboard.settings import Settings, default_tz
 from dashboard.tests import pg
 from scripts.import_garmin_mcp_snapshot import extract_sleep, merge_sleep
 
@@ -75,13 +74,11 @@ class SleepRetentionTests(unittest.TestCase):
             self.assertEqual(result['daily'][2]['score'], 0)
 
     def test_daily_schedule_retry_restart_and_success(self):
-        with (
-            tempfile.TemporaryDirectory() as name,
-            patch.dict(os.environ, {'DASHBOARD_SLEEP_SCHEDULE_ENABLED': 'true'}),
-        ):
+        with tempfile.TemporaryDirectory() as name:
             root = Path(name)
-            manager = JobManager(root / 'runtime', root)
-            current = datetime.now(TZ).replace(hour=12, minute=0, second=0, microsecond=0)
+            enabled = Settings.from_env({**os.environ, 'DASHBOARD_SLEEP_SCHEDULE_ENABLED': 'true'})
+            manager = JobManager(enabled, root / 'runtime', root)
+            current = datetime.now(default_tz()).replace(hour=12, minute=0, second=0, microsecond=0)
             manager.tick_sleep_schedule(current)
             first = manager.list()[0]
             self.assertEqual(first['mode'], 'sync-garmin')
@@ -90,7 +87,7 @@ class SleepRetentionTests(unittest.TestCase):
             manager.update(first['id'], 'failed', 'test')
             with manager.db() as conn:
                 conn.execute('UPDATE jobs SET finished_at=%s WHERE id=%s', (current.isoformat(), first['id']))
-            restarted = JobManager(root / 'runtime', root)
+            restarted = JobManager(enabled, root / 'runtime', root)
             restarted.tick_sleep_schedule(current + timedelta(minutes=30))
             self.assertEqual(len(restarted.list()), 1)
             restarted.tick_sleep_schedule(current + timedelta(hours=1))
@@ -101,13 +98,11 @@ class SleepRetentionTests(unittest.TestCase):
             self.assertEqual(len(restarted.list()), 2)
 
     def test_slot_before_ten_and_disabled_schedule(self):
-        current = datetime(2026, 10, 1, 9, tzinfo=TZ)
+        current = datetime(2026, 10, 1, 9, tzinfo=default_tz())
         self.assertEqual(sleep_schedule_slot(current).date().isoformat(), '2026-09-30')
-        with (
-            tempfile.TemporaryDirectory() as name,
-            patch.dict(os.environ, {'DASHBOARD_SLEEP_SCHEDULE_ENABLED': 'false'}),
-        ):
+        with tempfile.TemporaryDirectory() as name:
             root = Path(name)
-            manager = JobManager(root / 'runtime', root)
+            disabled = Settings.from_env({**os.environ, 'DASHBOARD_SLEEP_SCHEDULE_ENABLED': 'false'})
+            manager = JobManager(disabled, root / 'runtime', root)
             manager.tick_sleep_schedule(current)
             self.assertEqual(manager.list(), [])

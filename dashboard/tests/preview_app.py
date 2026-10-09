@@ -11,20 +11,20 @@ from pathlib import Path
 from starlette.staticfiles import StaticFiles
 
 from dashboard.server import create_app
+from dashboard.settings import Settings
 
-os.environ.update(
-    DASHBOARD_USERNAME="tester",
-    DASHBOARD_PASSWORD="synthetic-login-password",
-    DASHBOARD_SCHEDULE_ENABLED="false",
-    DASHBOARD_SLEEP_SCHEDULE_ENABLED="false",
-    OPENAI_API_KEY="",
-    GARMIN_EMAIL="",
-    GARMIN_PASSWORD="",
-    HEVY_API_KEY="",
+preview_settings = Settings.from_env(
+    {
+        **os.environ,
+        "DASHBOARD_USERNAME": "tester",
+        "DASHBOARD_PASSWORD": "synthetic-login-password",
+        "DASHBOARD_SCHEDULE_ENABLED": "false",
+        "DASHBOARD_SLEEP_SCHEDULE_ENABLED": "false",
+    }
 )
 root = Path(tempfile.mkdtemp(prefix="ascentiq-browser-qa-"))
 (root / "data").mkdir()
-api = create_app(root / "runtime", root)
+api = create_app(root / "runtime", root, preview_settings)
 static = StaticFiles(directory=os.environ.get("PREVIEW_STATIC", "/preview"), html=True)
 
 

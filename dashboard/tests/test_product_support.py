@@ -135,10 +135,10 @@ class ProductSupportTests(unittest.TestCase):
             settings.configure('hevy', {'api_key': 'synthetic-test-key'})
             self.assertNotIn('synthetic-test-key', json.dumps(settings.status()))
             self.assertNotIn(b'synthetic-test-key', settings.path.read_bytes())
-            self.assertEqual(os.environ['HEVY_API_KEY'], 'synthetic-test-key')
-            ProviderSettings(self.runtime)
+            self.assertIsNone(os.environ.get('HEVY_API_KEY'))
+            self.assertEqual(ProviderSettings(self.runtime).credentials('hevy'), {'api_key': 'synthetic-test-key'})
             settings.configure('hevy', enabled=False)
-            self.assertEqual(os.environ['HEVY_API_KEY'], '')
+            self.assertEqual(ProviderSettings(self.runtime).credentials('hevy'), {})
             with self.assertRaises(ValueError):
                 settings.configure('hevy', {'arbitrary_env': 'not-allowed'})
 

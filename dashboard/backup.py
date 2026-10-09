@@ -11,9 +11,10 @@ import tarfile
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+from dashboard.settings import default_tz
 
 MAGIC = b"ASCENTIQ-BACKUP-1\n"
 CHUNK = 1024 * 1024
@@ -157,7 +158,7 @@ def create_backup(root: Path, output: Path, *, database: bool = False) -> dict:
         "archive": archive.name,
         "database": database,
         "created_at": stamp,
-        "local_date": datetime.now(ZoneInfo(os.environ.get("TZ", "America/Sao_Paulo"))).date().isoformat(),
+        "local_date": datetime.now(default_tz()).date().isoformat(),
     }
     (output / "latest.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     return result

@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from dashboard.health import _active_plan
+from dashboard.settings import default_tz
 from scripts.sleep_data import sleep_rows
 
 QUESTION = 'Analise meu dia: alimentação, energia, treino, recuperação e próximos passos.'
@@ -308,9 +309,10 @@ def prepare(day, snapshot, state, summary, diary, *, notes='', planning=None, no
     if not isinstance(notes, str) or len(notes) > 3000:
         raise ValueError('O relato do dia deve ser um texto de até 3.000 caracteres.')
     try:
-        zone = ZoneInfo(summary.get('profile', {}).get('timezone') or 'America/Sao_Paulo')
+        preferred = summary.get('profile', {}).get('timezone')
+        zone = ZoneInfo(preferred) if preferred else default_tz()
     except ValueError, TypeError, KeyError:
-        zone = ZoneInfo('America/Sao_Paulo')
+        zone = default_tz()
     stamp = (now or datetime.now(UTC)).astimezone(zone).replace(second=0, microsecond=0)
     if day > stamp.date():
         raise ValueError('A análise usa o dia atual ou uma data passada, não um dia futuro.')

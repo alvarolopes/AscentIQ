@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import os
 import unittest
 import uuid
 from pathlib import Path
@@ -60,15 +59,16 @@ class OperationsSchemaTests(unittest.TestCase):
         name = "ascentiq_test_" + uuid.uuid4().hex[:8]
         with pg._admin() as conn:
             conn.execute(f'CREATE DATABASE "{name}"')
-        previous = os.environ["PGDATABASE"]
+
+        context = repository.use_database(name)
 
         def cleanup():
-            os.environ["PGDATABASE"] = previous
+            context.__exit__(None, None, None)
             with pg._admin() as conn:
                 conn.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
         self.addCleanup(cleanup)
-        os.environ["PGDATABASE"] = name
+        context.__enter__()
         migrations = Path(repository.__file__).parent / "migrations"
         try:
             with repository.connect() as conn:
@@ -96,7 +96,7 @@ class OperationsSchemaTests(unittest.TestCase):
                 warnings = conn.execute("SELECT warnings FROM operations.jobs WHERE id='j1'").fetchone()
                 self.assertEqual(warnings[0], [])
         finally:
-            os.environ["PGDATABASE"] = previous
+            context.__exit__(None, None, None)
 
 
 if __name__ == "__main__":

@@ -49,7 +49,7 @@ explica e sugere; as respostas não alteram automaticamente seus registros ou pl
 
 ## Começar do zero
 
-Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preencha duas senhas distintas de banco. Credenciais Garmin, Hevy e IA são opcionais e podem ser cadastradas no painel.
+Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preencha duas senhas distintas de banco. Credenciais Garmin, Hevy e IA são opcionais e podem ser cadastradas no painel. A configuração salva no painel tem prioridade sobre as variáveis de ambiente ao iniciar a API.
 
 ```powershell
 docker compose build api frontend web

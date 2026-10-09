@@ -11,6 +11,7 @@ import time
 import uuid
 from datetime import timedelta
 
+from dashboard import settings
 from dashboard.health import (
     _active_plan,
     _effective_values,
@@ -198,8 +199,9 @@ def context_for(health, snapshot, day):
 
 
 class NutritionTargets:
-    def __init__(self, health, snapshot):
+    def __init__(self, health, snapshot, providers=None):
         self.health, self.snapshot = health, snapshot
+        self._providers = providers
         self.lock = threading.Lock()
         self.wake, self.stop = threading.Event(), threading.Event()
         self.thread: threading.Thread | None = None
@@ -249,7 +251,13 @@ class NutritionTargets:
             if current and current.get('nutrition_fingerprint') == fingerprint:
                 self.status, self.message = 'ready', ''
                 return
-            config = configuration()
+            if self._providers is not None:
+                ai = self._providers.ai_configuration(settings.current())
+            else:
+                from dashboard.provider_settings import default_ai
+
+                ai = default_ai()
+            config = configuration(ai)
             if not config['configured'] or config['provider'] != 'ollama':
                 self.status, self.message = (
                     'unavailable',
@@ -261,7 +269,9 @@ class NutritionTargets:
             self.last_attempt, self.attempt_fingerprint = time.monotonic(), fingerprint
             self.status, self.message = 'updating', 'Atualizando a meta com seu peso, objetivo e treinos…'
             result = json.loads(
-                request_text(INSTRUCTIONS, json.dumps(context, ensure_ascii=False, allow_nan=False), schema=SCHEMA)
+                request_text(
+                    INSTRUCTIONS, json.dumps(context, ensure_ascii=False, allow_nan=False), ai=ai, schema=SCHEMA
+                )
             )
             adjustment, protein_ratio = result.get('energy_adjustment_pct'), result.get('protein_g_per_kg')
             fat_fraction = result.get('fat_energy_fraction')

@@ -7,7 +7,6 @@ from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from dashboard.repository import (
     REVISION,
@@ -18,11 +17,11 @@ from dashboard.repository import (
     repository_context,
     revision_metadata,
 )
+from dashboard.settings import default_tz
 from scripts.build_performance_management_model import build_recovery_summary
 from scripts.sleep_data import sleep_rows, summarize_sleep
 
 ROOT = Path(__file__).resolve().parents[1]
-TZ = ZoneInfo("America/Sao_Paulo")
 
 
 def load(root: Path, name: str, default: Any = None) -> Any:
@@ -157,7 +156,7 @@ def medical_documents(root: Path) -> dict[str, Path]:
 
 
 def build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
-    today = today or datetime.now(TZ).date()
+    today = today or datetime.now(default_tz()).date()
     if datasets_in_postgres(root):
         with repository_context(root):
             revision = REVISION.get()
@@ -177,7 +176,7 @@ def _load_snapshot(root: Path, today: date) -> dict:
 
 
 def _build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
-    today = today or datetime.now(TZ).date()
+    today = today or datetime.now(default_tz()).date()
     history = load(root, "training_history", [])
     hevy = {x["hevy_workout_id"]: x for x in load(root, "hevy_workouts", [])}
     strength = load(root, "strength_training_consolidated", [])
@@ -317,7 +316,7 @@ def _build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
     return {
         "schema_version": 1,
         "model_version": "athlete-load-42-7/v1",
-        "generated_at": datetime.now(TZ).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(default_tz()).isoformat(timespec="seconds"),
         "as_of": today.isoformat(),
         "source_digest": digest.hexdigest(),
         "freshness": freshness,

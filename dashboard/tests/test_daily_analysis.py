@@ -9,8 +9,10 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from dashboard import settings
 from dashboard.daily_analysis import DailyReports, ask_llm, prepare
 from dashboard.server import create_app
+from dashboard.settings import Settings
 from dashboard.tests import test_dashboard
 
 
@@ -69,14 +71,17 @@ class DailyTests(unittest.TestCase):
             self.assertEqual(imported['fingerprint'], changed['fingerprint'])
 
     def test_empty_day_and_missing_key(self):
-        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {}, clear=True):
+        with tempfile.TemporaryDirectory() as folder, settings.override(runtime=Path(folder), openai_api_key=None):
             with self.assertRaises(ValueError):
                 ask_llm('test')
             with self.assertRaises(ValueError):
                 DailyReports(Path(folder)).save(prepare({}, date(2026, 9, 30)))
 
     def test_provider_contract_and_incomplete_response(self):
-        with patch.dict(os.environ, {'OPENAI_API_KEY': 'test-only'}):
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            settings.override(runtime=Path(folder), openai_api_key='test-only'),
+        ):
             response = {
                 'status': 'completed',
                 'output': [
@@ -106,8 +111,10 @@ class DailyApiTests(test_dashboard.Fixture):
 
     def setUp(self):
         super().setUp()
-        with patch.dict(os.environ, {"DASHBOARD_PASSWORD": "test-only-password", "DASHBOARD_USERNAME": "alvaro"}):
-            self.client = TestClient(create_app(self.runtime, self.root))
+        app_settings = Settings.from_env(
+            {**os.environ, "DASHBOARD_PASSWORD": "test-only-password", "DASHBOARD_USERNAME": "alvaro"}
+        )
+        self.client = TestClient(create_app(self.runtime, self.root, app_settings))
 
     def tearDown(self):
         self.client.close()

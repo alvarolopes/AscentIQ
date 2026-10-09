@@ -1,13 +1,13 @@
 """Automatic daily goals use dated synthetic inputs and no external providers."""
 
 import json
-import os
 import tempfile
 import unittest
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
+from dashboard import settings
 from dashboard.health import HealthStore, _active_plan, _today
 from dashboard.nutrition_targets import NutritionTargets, context_for
 from dashboard.tests import pg
@@ -21,15 +21,14 @@ class NutritionTargetTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.env = patch.dict(
-            os.environ,
-            {
-                'ASCENTIQ_AI_PROVIDER': 'ollama',
-                'ASCENTIQ_AI_ENABLED': 'true',
-                'OLLAMA_MODEL': 'qwen3.5:4b',
-            },
+        self.env = settings.override(
+            runtime=self.root / 'runtime',
+            ai_provider='ollama',
+            ai_enabled=True,
+            ollama_model='qwen3.5:4b',
         )
-        self.env.start()
+        self.env.__enter__()
+        self.addCleanup(self.env.__exit__, None, None, None)
         self.health = HealthStore(self.root / 'runtime', self.root)
         self.day = _today()
         self.health.update('profile', {'age': 43, 'sex': 'male', 'height_cm': 180, 'weight_kg': 80})
@@ -69,7 +68,6 @@ class NutritionTargetTests(unittest.TestCase):
         )
 
     def tearDown(self):
-        self.env.stop()
         self.temp.cleanup()
 
     def test_generates_calories_macros_dated_plan_and_reuses_unchanged_context(self):
@@ -126,7 +124,7 @@ class NutritionTargetTests(unittest.TestCase):
                 self.assertEqual(service.view(self.day)['status'], 'missing_data')
                 self.assertIsNone(service.view(self.day)['kcal'])
         with patch('dashboard.nutrition_targets.request_text') as infer:
-            with patch.dict(os.environ, {'ASCENTIQ_AI_PROVIDER': 'openai', 'OPENAI_API_KEY': 'synthetic-unused'}):
+            with settings.override(ai_provider='openai', openai_api_key='synthetic-unused'):
                 self.targets.refresh(self.day)
             self.assertEqual(self.targets.view(self.day)['status'], 'unavailable')
             self.health.update('preferences', {'auto_nutrition_targets': False})

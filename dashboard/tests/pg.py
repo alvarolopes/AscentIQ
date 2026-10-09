@@ -29,13 +29,8 @@ def ensure_template():
     with _admin() as conn:
         if not conn.execute("SELECT 1 FROM pg_database WHERE datname=%s", (TEMPLATE,)).fetchone():
             conn.execute(f'CREATE DATABASE "{TEMPLATE}"')
-    previous = os.environ.get("PGDATABASE")
-    os.environ["PGDATABASE"] = TEMPLATE
-    try:
+    with repository.use_database(TEMPLATE):
         repository.migrate()
-    finally:
-        if previous is not None:
-            os.environ["PGDATABASE"] = previous
 
 
 def reset_database():
@@ -57,7 +52,7 @@ def reset_database():
 
 @contextlib.contextmanager
 def temp_database():
-    """Point PGDATABASE at a new migrated database inside the block.
+    """Point connect() at a new migrated database inside the block.
 
     For tests that need two isolated operational stores at once (for example a
     populated HealthStore next to an empty one) now that operational state no
@@ -67,13 +62,10 @@ def temp_database():
     name = "ascentiq_test_" + uuid.uuid4().hex[:8]
     with _admin() as conn:
         conn.execute(f'CREATE DATABASE "{name}" TEMPLATE "{TEMPLATE}"')
-    previous = os.environ.get("PGDATABASE")
-    os.environ["PGDATABASE"] = name
     try:
-        yield name
+        with repository.use_database(name):
+            yield name
     finally:
-        if previous is not None:
-            os.environ["PGDATABASE"] = previous
         with _admin() as conn:
             conn.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
@@ -83,16 +75,15 @@ def fresh_database(case):
     name = "ascentiq_test_" + uuid.uuid4().hex[:8]
     with _admin() as conn:
         conn.execute(f'CREATE DATABASE "{name}" TEMPLATE "{TEMPLATE}"')
-    previous = os.environ.get("PGDATABASE")
-    os.environ["PGDATABASE"] = name
+    context = repository.use_database(name)
+    context.__enter__()
 
     def drop():
         try:
             with _admin() as conn:
                 conn.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         finally:
-            if previous is not None:
-                os.environ["PGDATABASE"] = previous
+            context.__exit__(None, None, None)
 
     case.addClassCleanup(drop)
 

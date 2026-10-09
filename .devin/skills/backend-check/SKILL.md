@@ -39,6 +39,7 @@ Rules that apply to every backend change:
 - Error messages shown to the user are in Brazilian Portuguese; keep existing wording when refactoring.
 - Private data never goes to disk caches, shared caches or logs. In-memory only, keyed by revision.
 - Missing, zero and pending are distinct states; never collapse `None` into `0`.
+- Application code never writes to `os.environ`; tests use `settings.override(...)` instead of `patch.dict(os.environ, ...)`.
 - Tests use synthetic data only. Never read `data/*.json` (except `sample_*.json`), `runtime/` or `.env` in tests.
 - Do not touch the running Docker stack (`ascentiq-*` containers) or `compose.override.yaml`.
 

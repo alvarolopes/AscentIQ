@@ -22,6 +22,7 @@ from dashboard.repository import (
     read_dataset,
     validate_path,
 )
+from dashboard.settings import Settings
 from dashboard.tests import pg
 
 
@@ -35,7 +36,7 @@ class LocalRepositoryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
-            manager = JobManager(root / "runtime", root)
+            manager = JobManager(Settings.from_env(), root / "runtime", root)
             manager.enqueue("generate")
             job = manager.list()[0]
             with patch("dashboard.database_pipeline.run_database_pipeline", return_value=[]) as rebuild:
@@ -59,11 +60,15 @@ class LocalRepositoryTests(unittest.TestCase):
                     (root / "data" / (key + ".json")).write_bytes(b'[]')
                 raise RuntimeError("synthetic source failure")
 
-            with (
-                patch.dict(os.environ, {"GARMIN_EMAIL": "synthetic", "GARMIN_PASSWORD": "synthetic"}),
-                patch("dashboard.pipeline.run_script", side_effect=fail),
-            ):
-                self.assertTrue(sync_sources(root, sources=("garmin",)))
+            with patch("dashboard.pipeline.run_script", side_effect=fail):
+                self.assertTrue(
+                    sync_sources(
+                        root,
+                        sources=("garmin",),
+                        credentials={"garmin": {"email": "synthetic", "password": "synthetic"}},
+                        enabled={"garmin": True},
+                    )
+                )
             for key, raw in files.items():
                 self.assertEqual((root / "data" / (key + ".json")).read_bytes(), raw)
 
@@ -260,18 +265,17 @@ class PostgresIntegrationTests(unittest.TestCase):
         from dashboard.jobs import JobManager
         from dashboard.server import create_app
 
-        with (
-            tempfile.TemporaryDirectory() as name,
-            patch.dict(
-                os.environ,
-                {
-                    "DASHBOARD_PASSWORD": "synthetic-test",
-                    "DASHBOARD_USERNAME": "athlete",
-                },
-            ),
-        ):
+        with tempfile.TemporaryDirectory() as name:
             runtime = Path(name)
-            client = TestClient(create_app(runtime, Path(name)))
+            client = TestClient(
+                create_app(
+                    runtime,
+                    Path(name),
+                    Settings.from_env(
+                        {**os.environ, "DASHBOARD_PASSWORD": "synthetic-test", "DASHBOARD_USERNAME": "athlete"}
+                    ),
+                )
+            )
             self.assertEqual(client.get("/api/dashboard").status_code, 401)
             response = client.post(
                 "/api/auth/login",
@@ -279,7 +283,7 @@ class PostgresIntegrationTests(unittest.TestCase):
                 headers={"X-AscentIQ-Request": "1"},
             )
             self.assertEqual(response.status_code, 200)
-            manager = JobManager(runtime, recover_interrupted=False)
+            manager = JobManager(Settings.from_env(), runtime, recover_interrupted=False)
             manager.enqueue("generate")
             with self.assertRaises(RuntimeError):
                 manager.enqueue("sync")

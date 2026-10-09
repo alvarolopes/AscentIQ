@@ -12,7 +12,8 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from dashboard.repository import operational_db, operational_lock
-from dashboard.snapshot import ROOT, TZ
+from dashboard.settings import default_tz
+from dashboard.snapshot import ROOT
 
 
 @contextmanager
@@ -38,7 +39,7 @@ def process_lock(path: Path):
 
 
 def now() -> str:
-    return datetime.now(TZ).isoformat(timespec="seconds")
+    return datetime.now(default_tz()).isoformat(timespec="seconds")
 
 
 def schedule_slot(current: datetime) -> datetime:
@@ -48,13 +49,25 @@ def schedule_slot(current: datetime) -> datetime:
 
 
 def sleep_schedule_slot(current: datetime) -> datetime:
-    slot = current.astimezone(TZ).replace(hour=10, minute=0, second=0, microsecond=0)
+    slot = current.astimezone(default_tz()).replace(hour=10, minute=0, second=0, microsecond=0)
     return slot if current >= slot else slot - timedelta(days=1)
 
 
 class JobManager:
-    def __init__(self, runtime: Path, root: Path = ROOT, *, recover_interrupted: bool = True):
+    def __init__(
+        self,
+        settings,
+        runtime: Path,
+        root: Path = ROOT,
+        *,
+        preferences=lambda: {},
+        providers=None,
+        recover_interrupted: bool = True,
+    ):
+        self.settings = settings
         self.runtime, self.root = runtime, root
+        self._preferences = preferences
+        self.providers = providers
         runtime.mkdir(parents=True, exist_ok=True)
         self.stop = threading.Event()
         self.thread: threading.Thread | None = None
@@ -63,7 +76,7 @@ class JobManager:
                 conn.execute(
                     "UPDATE jobs SET status='failed', message='Processo interrompido; execute novamente.' WHERE status='running'"
                 )
-            slot = schedule_slot(datetime.now(TZ)).isoformat()
+            slot = schedule_slot(datetime.now(default_tz())).isoformat()
             conn.execute("INSERT INTO settings VALUES ('scheduled_slot', %s) ON CONFLICT DO NOTHING", (slot,))
 
     @contextmanager
@@ -83,7 +96,7 @@ class JobManager:
             active = conn.execute("SELECT id FROM jobs WHERE status IN ('queued','running')").fetchone()
             if active:
                 raise RuntimeError("Uma atualização já está em andamento.")
-            job_id = datetime.now(TZ).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
+            job_id = datetime.now(default_tz()).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
             conn.execute(
                 "INSERT INTO jobs VALUES (%s, %s, 'queued', %s, NULL, 'Aguardando execução', %s, %s)",
                 (job_id, mode, now(), Jsonb([]), schedule_key),
@@ -116,7 +129,9 @@ class JobManager:
                 progress("Preparando dados")
                 from dashboard.database_pipeline import run_database_pipeline
 
-                warnings = run_database_pipeline(job, self.root, self.runtime, progress)
+                warnings = run_database_pipeline(
+                    job, self.root, self.runtime, progress, providers=self.providers, settings=self.settings
+                )
                 self.update(
                     job["id"],
                     "partial" if warnings else "completed",
@@ -132,7 +147,7 @@ class JobManager:
             self.update(job["id"], "failed", message)
 
     def tick_schedule(self, current: datetime):
-        if os.environ.get("DASHBOARD_SCHEDULE_ENABLED", "true").lower() != "true":
+        if not self._preferences().get("weekly_sync", self.settings.schedule_enabled):
             return
         slot = schedule_slot(current).isoformat()
         with self.db() as conn:
@@ -146,7 +161,7 @@ class JobManager:
                 conn.execute("UPDATE settings SET value=%s WHERE key='scheduled_slot'", (slot,))
 
     def tick_sleep_schedule(self, current: datetime):
-        if os.environ.get("DASHBOARD_SLEEP_SCHEDULE_ENABLED", "true").lower() != "true":
+        if not self._preferences().get("daily_sync", self.settings.sleep_schedule_enabled):
             return
         prefix = 'daily-sleep:' + sleep_schedule_slot(current).date().isoformat() + ':'
         with self.db() as conn:
@@ -169,8 +184,8 @@ class JobManager:
 
     def loop(self):
         while not self.stop.is_set():
-            self.tick_schedule(datetime.now(TZ))
-            self.tick_sleep_schedule(datetime.now(TZ))
+            self.tick_schedule(datetime.now(default_tz()))
+            self.tick_sleep_schedule(datetime.now(default_tz()))
             with self.db() as conn:
                 row = conn.execute("SELECT * FROM jobs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
             if row:

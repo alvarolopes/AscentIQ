@@ -21,7 +21,8 @@ from dashboard.repository import (
     migrate,
     read_files,
 )
-from dashboard.snapshot import TZ, build_snapshot
+from dashboard.settings import default_tz
+from dashboard.snapshot import build_snapshot
 
 
 def bootstrap():
@@ -245,8 +246,13 @@ def main():
         raw = args.input.read_bytes()
         json.loads(raw.decode("utf-8-sig"))
         runtime = args.root / "runtime" / "dashboard"
-        manager = JobManager(runtime, args.root, recover_interrupted=False)
-        key = datetime.now(TZ).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
+        from dashboard.provider_settings import ProviderSettings
+        from dashboard.settings import Settings
+
+        settings = Settings.from_env()
+        providers = ProviderSettings(runtime)
+        manager = JobManager(settings, runtime, args.root, providers=providers, recover_interrupted=False)
+        key = datetime.now(default_tz()).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
         with manager.db() as conn:
             operational_lock(conn)
             if conn.execute("SELECT id FROM jobs WHERE status IN ('queued','running')").fetchone():
@@ -260,6 +266,8 @@ def main():
                 {"id": key, "mode": "generate", "reason": "manual-" + args.dataset},
                 args.root,
                 runtime,
+                providers=providers,
+                settings=settings,
                 replacements={"data/" + args.dataset + ".json": raw},
             )
             manager.update(key, "partial" if warnings else "completed", "Atualizacao manual publicada", warnings)
@@ -269,8 +277,17 @@ def main():
         result = {"id": key, "dataset": args.dataset, "status": "partial" if warnings else "completed"}
     elif args.command == "run":
         from dashboard.jobs import JobManager
+        from dashboard.provider_settings import ProviderSettings
+        from dashboard.settings import Settings
 
-        manager = JobManager(args.root / "runtime" / "dashboard", args.root, recover_interrupted=False)
+        runtime = args.root / "runtime" / "dashboard"
+        manager = JobManager(
+            Settings.from_env(),
+            runtime,
+            args.root,
+            providers=ProviderSettings(runtime),
+            recover_interrupted=False,
+        )
         key = manager.enqueue(args.mode)
         manager.process(next(job for job in manager.list() if job["id"] == key))
         job = next(job for job in manager.list() if job["id"] == key)

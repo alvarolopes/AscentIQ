@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from dashboard import settings
 from dashboard.artifacts import Artifacts
 from dashboard.assistant import answer
 from dashboard.food_store import FoodDiary
@@ -28,6 +29,9 @@ class BackendSafetyTests(unittest.TestCase):
         self.runtime = self.root / 'runtime'
         self.runtime.mkdir()
         self.day = date(2026, 10, 3)
+        self._settings = settings.override(runtime=self.runtime)
+        self._settings.__enter__()
+        self.addCleanup(self._settings.__exit__, None, None, None)
 
     def tearDown(self):
         self.temp.cleanup()

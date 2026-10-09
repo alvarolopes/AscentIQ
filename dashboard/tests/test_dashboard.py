@@ -14,7 +14,8 @@ import dashboard.repository as repository
 from dashboard.jobs import JobManager, schedule_slot
 from dashboard.pipeline import chart_svg, publish_report, sync_sources, training_snapshot
 from dashboard.server import create_app
-from dashboard.snapshot import TZ, activity_kind, build_snapshot, medical_documents, seconds
+from dashboard.settings import Settings, default_tz
+from dashboard.snapshot import activity_kind, build_snapshot, medical_documents, seconds
 from dashboard.tests import pg
 
 
@@ -146,7 +147,7 @@ class SnapshotTests(Fixture):
 
 class JobsTests(Fixture):
     def test_reject_concurrent_and_invalid_mode(self):
-        manager = JobManager(self.runtime, self.root)
+        manager = JobManager(Settings.from_env(), self.runtime, self.root)
         manager.enqueue("generate")
         with self.assertRaises(RuntimeError):
             manager.enqueue("sync")
@@ -154,23 +155,23 @@ class JobsTests(Fixture):
             manager.enqueue("bad")
 
     def test_interrupted_job_marked_failed(self):
-        manager = JobManager(self.runtime, self.root)
+        manager = JobManager(Settings.from_env(), self.runtime, self.root)
         key = manager.enqueue("generate")
         manager.update(key, "running", "Test")
-        restored = JobManager(self.runtime, self.root)
+        restored = JobManager(Settings.from_env(), self.runtime, self.root)
         self.assertEqual(restored.list()[0]["status"], "failed")
 
     def test_schedule_fuso_and_one_job(self):
-        manager = JobManager(self.runtime, self.root)
-        future = schedule_slot(datetime.now(TZ)) + timedelta(days=7, minutes=1)
+        manager = JobManager(Settings.from_env(), self.runtime, self.root)
+        future = schedule_slot(datetime.now(default_tz())) + timedelta(days=7, minutes=1)
         manager.tick_schedule(future)
         manager.tick_schedule(future)
         self.assertEqual(len(manager.list()), 1)
         self.assertEqual(manager.list()[0]["mode"], "sync")
 
     def test_monday_before_seven(self):
-        self.assertEqual(schedule_slot(datetime(2026, 9, 28, 6, 59, tzinfo=TZ)).date(), date(2026, 9, 21))
-        self.assertEqual(schedule_slot(datetime(2026, 9, 28, 7, 0, tzinfo=TZ)).date(), date(2026, 9, 28))
+        self.assertEqual(schedule_slot(datetime(2026, 9, 28, 6, 59, tzinfo=default_tz())).date(), date(2026, 9, 21))
+        self.assertEqual(schedule_slot(datetime(2026, 9, 28, 7, 0, tzinfo=default_tz())).date(), date(2026, 9, 28))
 
     def test_failed_compile_preserves_previous(self):
         (self.root / "dashboard" / "templates").mkdir(parents=True)
@@ -186,17 +187,22 @@ class JobsTests(Fixture):
         self.assertEqual(json.loads((self.runtime / "latest.json").read_text())["id"], "previous")
 
     def test_missing_credentials_no_remote_call(self):
-        with patch.dict(os.environ, {}, clear=True), patch("dashboard.pipeline.run_script") as run:
+        with patch("dashboard.pipeline.run_script") as run:
             with self.assertRaises(RuntimeError):
-                sync_sources(self.root)
+                sync_sources(self.root, credentials={}, enabled={})
             run.assert_not_called()
 
 
 class ApiTests(Fixture):
     def setUp(self):
         super().setUp()
-        with patch.dict(os.environ, {"DASHBOARD_PASSWORD": "test-only-password", "DASHBOARD_USERNAME": "alvaro"}):
-            self.app = create_app(self.runtime, self.root)
+        self.app = create_app(
+            self.runtime,
+            self.root,
+            Settings.from_env(
+                {**os.environ, "DASHBOARD_PASSWORD": "test-only-password", "DASHBOARD_USERNAME": "alvaro"}
+            ),
+        )
         self.client = TestClient(self.app)
 
     def login(self):

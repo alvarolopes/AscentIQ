@@ -10,7 +10,8 @@ from pathlib import Path
 
 from dashboard.pipeline import publish_report, rebuild, sync_sources
 from dashboard.repository import PostgresRepository, connect, document_manifest, read_files
-from dashboard.snapshot import TZ, build_snapshot
+from dashboard.settings import default_tz
+from dashboard.snapshot import build_snapshot
 
 
 def backup_if_due(root, runtime, progress):
@@ -19,7 +20,7 @@ def backup_if_due(root, runtime, progress):
     output = runtime.parent / "backups"
     latest = output / "latest.json"
     previous = json.loads(latest.read_text()) if latest.exists() else {}
-    today = datetime.now(TZ).date().isoformat()
+    today = datetime.now(default_tz()).date().isoformat()
     if previous.get("database") and previous.get("local_date") == today:
         return
     progress("Verificando backup criptografado")
@@ -28,8 +29,13 @@ def backup_if_due(root, runtime, progress):
     latest.write_text(json.dumps(result), encoding="utf-8")
 
 
-def run_database_pipeline(job, root, runtime, progress=lambda _: None, replacements=None):
+def run_database_pipeline(
+    job, root, runtime, progress=lambda _: None, *, providers=None, settings=None, replacements=None
+):
+    from dashboard.provider_settings import ProviderSettings
     from dashboard.repository import LOCK_ID
+
+    providers = providers or ProviderSettings(runtime)
 
     repo = PostgresRepository()
     # Session lock covers work outside the final SQL transaction, including CLI jobs.
@@ -60,7 +66,18 @@ def run_database_pipeline(job, root, runtime, progress=lambda _: None, replaceme
                     else ("garmin", "hevy")
                 )
                 try:
-                    warnings = sync_sources(stage, progress, sources) if job["mode"] != "generate" else []
+                    warnings = (
+                        sync_sources(
+                            stage,
+                            progress,
+                            sources,
+                            credentials={source: providers.credentials(source) for source in sources},
+                            enabled={source: providers.enabled(source) for source in sources},
+                            settings=settings,
+                        )
+                        if job["mode"] != "generate"
+                        else []
+                    )
                 finally:
                     # Keep responses even if a later calculation, PDF or transaction fails.
                     for source in ("garmin_mcp_exports", "hevy_api_exports"):
@@ -86,7 +103,7 @@ def run_database_pipeline(job, root, runtime, progress=lambda _: None, replaceme
                 snapshot["sync_warnings"] = warnings
                 files = read_files(stage)
                 progress("Gerando relatorios antes da publicacao")
-                report = publish_report(snapshot, job["id"], runtime, stage, activate=False)
+                report = publish_report(snapshot, job["id"], runtime, stage, activate=False, settings=settings)
                 progress("Publicando revisao transacional no PostgreSQL")
                 # No active data or report pointer changes if SQL validation fails.
                 published_revision = repo.publish(

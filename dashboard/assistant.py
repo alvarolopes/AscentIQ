@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import threading
 from datetime import UTC, date, datetime, timedelta
@@ -12,6 +11,7 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from dashboard.daily_analysis import configuration
+from dashboard.settings import default_tz
 from scripts.sleep_data import sleep_rows
 
 _ANSWER_LOCK = threading.RLock()
@@ -146,7 +146,7 @@ def personal_period(day, days=14, *, period='days', start=None, end=None):
         first = day.replace(day=1)
         following = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
         last = following - timedelta(days=1)
-        today = datetime.now(ZoneInfo('America/Sao_Paulo')).date()
+        today = datetime.now(default_tz()).date()
         if first > today:
             raise ValueError('Escolha um mês com registros disponíveis, até o mês atual.')
         last = min(last, today)
@@ -197,15 +197,30 @@ def conversation_turns(artifacts, conversation_id, message_ids, *, include_medic
     return turns, withheld
 
 
-def request_text(instructions, content, *, json_output=False, schema=None, max_tokens=2000, local_only=False):
-    if local_only or configuration()['provider'] == 'ollama':
+def request_text(
+    instructions, content, *, ai=None, settings=None, json_output=False, schema=None, max_tokens=2000, local_only=False
+):
+    if ai is None:
+        from dashboard.provider_settings import default_ai
+
+        ai = default_ai(settings)
+    config = configuration(ai)
+    if local_only or config['provider'] == 'ollama':
         from dashboard.local_ai import request_text as local_request
 
-        return local_request(instructions, content, json_output=json_output, schema=schema, max_tokens=max_tokens)
-    if not configuration()['configured']:
+        return local_request(
+            instructions,
+            content,
+            ai=ai,
+            settings=settings,
+            json_output=json_output,
+            schema=schema,
+            max_tokens=max_tokens,
+        )
+    if not config['configured']:
         raise ValueError('A IA não está configurada. Use o contexto preparado em outra IA e importe a resposta.')
     payload = {
-        'model': configuration()['model'],
+        'model': config['model'],
         'instructions': instructions,
         'input': content,
         'store': False,
@@ -216,7 +231,7 @@ def request_text(instructions, content, *, json_output=False, schema=None, max_t
     request = Request(
         'https://api.openai.com/v1/responses',
         data=json.dumps(payload).encode(),
-        headers={'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json'},
+        headers={'Authorization': 'Bearer ' + (ai.api_key or ''), 'Content-Type': 'application/json'},
     )
     try:
         with urlopen(request, timeout=45) as response:
@@ -611,7 +626,16 @@ def prepare_personal(
 
 
 def answer(
-    artifacts, prepared, question, day, *, manual_response=None, daily_limit=20, conversation_id=None, message_ids=None
+    artifacts,
+    prepared,
+    question,
+    day,
+    *,
+    ai=None,
+    manual_response=None,
+    daily_limit=20,
+    conversation_id=None,
+    message_ids=None,
 ):
     # One individual deployment, one worker: serialize cache/quota/publication
     # with the request to prevent identical concurrent calls being charged twice.
@@ -621,6 +645,7 @@ def answer(
             prepared,
             question,
             day,
+            ai=ai,
             manual_response=manual_response,
             daily_limit=daily_limit,
             conversation_id=conversation_id,
@@ -629,9 +654,18 @@ def answer(
 
 
 def _answer(
-    artifacts, prepared, question, day, *, manual_response=None, daily_limit=20, conversation_id=None, message_ids=None
+    artifacts,
+    prepared,
+    question,
+    day,
+    *,
+    ai=None,
+    manual_response=None,
+    daily_limit=20,
+    conversation_id=None,
+    message_ids=None,
 ):
-    config = configuration()
+    config = configuration(ai)
     turns, withheld = conversation_turns(
         artifacts,
         conversation_id,
@@ -654,9 +688,13 @@ def _answer(
     if cached and manual_response is None:
         return {**cached, 'cached': True}
     try:
-        zone = ZoneInfo(prepared['context'].get('profile', {}).get('timezone') or 'America/Sao_Paulo')
+        zone = (
+            ZoneInfo(prepared['context'].get('profile', {}).get('timezone'))
+            if prepared['context'].get('profile', {}).get('timezone')
+            else default_tz()
+        )
     except ValueError, KeyError, TypeError:
-        zone = ZoneInfo('America/Sao_Paulo')
+        zone = default_tz()
     current_day = datetime.now(zone).date()
 
     def local_day(item):
@@ -694,14 +732,20 @@ def _answer(
         text = render_response(
             prepared['context'],
             request_text(
-                prepared['instructions'], content, json_output=True, schema=SCHEMA, max_tokens=3000, local_only=True
+                prepared['instructions'],
+                content,
+                ai=ai,
+                json_output=True,
+                schema=SCHEMA,
+                max_tokens=3000,
+                local_only=True,
             ),
         )
     else:
         text = (
             manual_response
             if manual_response is not None
-            else request_text(prepared.get('instructions', INSTRUCTIONS), prompt)
+            else request_text(prepared.get('instructions', INSTRUCTIONS), prompt, ai=ai)
         )
     return artifacts.save(
         'assistant',

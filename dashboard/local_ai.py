@@ -1,33 +1,28 @@
 """Local-only Ollama transport. Never falls back to a paid provider."""
 
 import json
-import os
 import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
-def configuration():
-    provider = os.environ.get('ASCENTIQ_AI_PROVIDER', 'openai').strip().lower()
-    enabled = os.environ.get('ASCENTIQ_AI_ENABLED', 'true') == 'true'
-    if provider == 'ollama':
-        model = os.environ.get('OLLAMA_MODEL', 'qwen3.5:4b').strip() or 'qwen3.5:4b'
-        return {'provider': provider, 'model': model, 'configured': enabled and valid_model(model), 'local': True}
-    return {
-        'provider': provider,
-        'model': os.environ.get('OPENAI_MODEL', 'gpt-5'),
-        'configured': enabled and provider == 'openai' and bool(os.environ.get('OPENAI_API_KEY', '').strip()),
-        'local': False,
-    }
+def configuration(ai=None):
+    if ai is None:
+        from dashboard.provider_settings import default_ai
+
+        ai = default_ai()
+    return {'provider': ai.provider, 'model': ai.model, 'configured': ai.configured, 'local': ai.local}
 
 
 def valid_model(model):
     return bool(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:/-]{0,199}', model)) and 'cloud' not in model.lower()
 
 
-def base_url():
-    value = os.environ.get('OLLAMA_BASE_URL', 'http://ollama:11434').rstrip('/')
+def base_url(settings=None):
+    from dashboard.settings import current
+
+    value = (settings or current()).ollama_base_url.rstrip('/')
     parsed = urlsplit(value)
     if (
         parsed.scheme != 'http'
@@ -68,8 +63,8 @@ def messages(instructions, content):
     return result
 
 
-def request_text(instructions, content, *, json_output=False, schema=None, max_tokens=2000):
-    config = configuration()
+def request_text(instructions, content, *, ai=None, settings=None, json_output=False, schema=None, max_tokens=2000):
+    config = configuration(ai)
     if config['provider'] != 'ollama' or not config['configured']:
         raise ValueError('O modelo local não está configurado.')
     payload = {
@@ -83,7 +78,9 @@ def request_text(instructions, content, *, json_output=False, schema=None, max_t
     if schema or json_output:
         payload['format'] = schema or 'json'
     request = Request(
-        base_url() + '/api/chat', data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'}
+        base_url(settings) + '/api/chat',
+        data=json.dumps(payload).encode(),
+        headers={'Content-Type': 'application/json'},
     )
     try:
         with urlopen(request, timeout=180) as response:

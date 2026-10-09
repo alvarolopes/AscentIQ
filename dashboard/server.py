@@ -20,10 +20,12 @@ from pydantic import BaseModel, Field
 from dashboard.daily_analysis import DailyReports, configuration, prepare
 from dashboard.jobs import JobManager
 from dashboard.nutrition import FoodDiary, estimate, prompt, validate
+from dashboard.provider_settings import ProviderSettings
 from dashboard.repository import connect, migrate, operational_db
+from dashboard.settings import Settings
+from dashboard.settings import install as install_settings
 from dashboard.snapshot import ROOT, build_snapshot, medical_documents
 
-RUNTIME = Path(os.environ.get("DASHBOARD_RUNTIME", str(ROOT / "runtime" / "dashboard")))
 COOKIE = "ascentiq_session"
 
 
@@ -102,21 +104,24 @@ def validation_detail(error):
     return f"{field}: {message}" if field else message
 
 
-def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
+def create_app(runtime: Path | None = None, root: Path = ROOT, settings: Settings | None = None) -> FastAPI:
+    settings = settings or Settings.from_env()
+    install_settings(settings)
+    runtime = Path(runtime) if runtime is not None else settings.runtime
     runtime.mkdir(parents=True, exist_ok=True)
-    if os.environ.get("ASCENTIQ_AUTO_MIGRATE", "false").lower() == "true":
+    if settings.auto_migrate:
         migrate()
     auth_path = runtime / "auth.json"
     if not auth_path.exists():
-        password = os.environ.get("DASHBOARD_PASSWORD") or secrets.token_urlsafe(18)
+        password = settings.initial_password or secrets.token_urlsafe(18)
         salt = secrets.token_hex(16)
         auth = {
-            "username": os.environ.get("DASHBOARD_USERNAME", "alvaro"),
+            "username": settings.username,
             "salt": salt,
             "hash": hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 310000).hex(),
         }
         auth_path.write_text(json.dumps(auth), encoding="utf-8")
-        if not os.environ.get("DASHBOARD_PASSWORD"):
+        if not settings.initial_password:
             access = runtime / "access.txt"
             access.write_text(
                 f"AscentIQ - acesso privado local\nUsuário: {auth['username']}\nSenha: {password}\nURL: http://localhost:8787\n",
@@ -133,9 +138,23 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
         with operational_db() as conn:
             yield conn
 
-    manager = JobManager(runtime, root)
+    from dashboard.health import HealthStore
+
+    providers = ProviderSettings(runtime)
+    health_store = HealthStore(runtime, root)
+    manager = JobManager(
+        settings,
+        runtime,
+        root,
+        preferences=lambda: health_store.read()['preferences'],
+        providers=providers,
+    )
     daily_reports = DailyReports(runtime)
     food_diary = FoodDiary(runtime, root)
+
+    def ai_payload() -> dict:
+        return configuration(providers.ai_configuration(settings))
+
     attempts: dict[str, list[float]] = {}
 
     @asynccontextmanager
@@ -146,7 +165,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
         app.state.nutrition_targets.close()
         manager.close()
 
-    openapi_route = os.environ.get("ASCENTIQ_OPENAPI", "false").lower() == "true"
+    openapi_route = settings.openapi
     app = FastAPI(
         title="AscentIQ Private Dashboard",
         lifespan=lifespan,
@@ -213,7 +232,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
             token,
             httponly=True,
             samesite="strict",
-            secure=os.environ.get("DASHBOARD_SECURE_COOKIES", "false") == "true",
+            secure=settings.secure_cookies,
             max_age=86400 * 7,
             path="/",
         )
@@ -255,7 +274,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
         saved = daily_reports.read(day)
         return {
             **prepared,
-            **configuration(),
+            **ai_payload(),
             "report": saved,
             "stale": bool(saved and saved["fingerprint"] != prepared["fingerprint"]),
         }
@@ -276,11 +295,11 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     @app.get('/api/food/{day}')
     def food(day: date):
-        return {**food_diary.read(day), **configuration(), 'targets': app.state.nutrition_targets.view(day)}
+        return {**food_diary.read(day), **ai_payload(), 'targets': app.state.nutrition_targets.view(day)}
 
     @app.get('/api/ai/configuration')
     def ai_configuration():
-        return configuration()
+        return ai_payload()
 
     @app.post('/api/food/{day}/analyze')
     def analyze_food(day: date, payload: FoodRequest):
@@ -289,7 +308,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
         try:
             if payload.analysis is not None:
                 return {**validate(payload.analysis), 'source': 'imported', 'model': 'Resposta importada'}
-            return estimate(payload.text, payload.image)
+            return estimate(payload.text, payload.image, ai=providers.ai_configuration(settings))
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
         except RuntimeError as error:
@@ -344,7 +363,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
             # Persist first: an unavailable model must never lose the meal.
             try:
                 image = app.state.food_image_content(image_id) if image_id else None
-                analysis = estimate(payload.text, image)
+                analysis = estimate(payload.text, image, ai=providers.ai_configuration(settings))
             except (ValueError, RuntimeError) as error:
                 return {**saved, 'analysis_status': 'pending', 'analysis_error': str(error)}
             completed = food_diary.change(
@@ -387,8 +406,10 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
         return {
             "jobs": manager.list(),
             "schedule": "Relatório semanal: segunda, 07h. Garmin e sono: diariamente, 10h (America/Sao_Paulo); até 3 tentativas com intervalo de 1h.",
-            "sleep_schedule_enabled": os.environ.get("DASHBOARD_SLEEP_SCHEDULE_ENABLED", "true").lower() == "true",
-            "schedule_enabled": os.environ.get("DASHBOARD_SCHEDULE_ENABLED", "true").lower() == "true",
+            "sleep_schedule_enabled": health_store.read()['preferences'].get(
+                'daily_sync', settings.sleep_schedule_enabled
+            ),
+            "schedule_enabled": health_store.read()['preferences'].get('weekly_sync', settings.schedule_enabled),
         }
 
     @app.post("/api/jobs", status_code=202)
@@ -462,5 +483,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
 
     from dashboard.personal_api import install_personal_routes
 
-    install_personal_routes(app, runtime, root, food_diary, manager)
+    install_personal_routes(
+        app, runtime, root, food_diary, manager, health=health_store, providers=providers, settings=settings
+    )
     return app

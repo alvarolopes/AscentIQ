@@ -9,17 +9,20 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from dashboard.snapshot import ROOT, TZ
+from dashboard.settings import default_tz
+from dashboard.snapshot import ROOT
 
 
-def run_script(name: str, *arguments: str, root: Path = ROOT, progress=lambda _: None) -> None:
+def run_script(
+    name: str, *arguments: str, root: Path = ROOT, progress=lambda _: None, environment: dict | None = None
+) -> None:
     progress(name.removesuffix(".py").replace("_", " "))
-    environment = os.environ.copy()
-    environment["PYTHONUTF8"] = "1"
+    child = dict(os.environ) if environment is None else environment
+    child["PYTHONUTF8"] = "1"
     result = subprocess.run(
         [sys.executable, str(root / "scripts" / name), *map(str, arguments)],
         cwd=root,
-        env=environment,
+        env=child,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -33,31 +36,45 @@ def run_script(name: str, *arguments: str, root: Path = ROOT, progress=lambda _:
         )
 
 
-def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", "hevy")) -> list[str]:
+def sync_sources(
+    root: Path = ROOT,
+    progress=lambda _: None,
+    sources=("garmin", "hevy"),
+    *,
+    credentials: dict | None = None,
+    enabled: dict | None = None,
+    settings=None,
+) -> list[str]:
+    from dashboard.settings import current
     from scripts.compute_garmin_sync_window import sync_start
-    from scripts.env_utils import load_dotenv
 
-    load_dotenv(root / ".env")
-    keys = {"garmin": ("GARMIN_EMAIL", "GARMIN_PASSWORD"), "hevy": ("HEVY_API_KEY",)}
+    settings = settings or current()
+    credentials = credentials or {}
+    enabled = enabled or {}
+    keys = {"garmin": ("email", "password"), "hevy": ("api_key",)}
+    child_secrets = {
+        "garmin": lambda c: {"GARMIN_EMAIL": c.get("email", ""), "GARMIN_PASSWORD": c.get("password", "")},
+        "hevy": lambda c: {"HEVY_API_KEY": c.get("api_key", "")},
+    }
     warnings = []
     available = []
     for source in sources:
-        if os.environ.get('ASCENTIQ_' + source.upper() + '_ENABLED', 'true') != 'true':
+        if not enabled.get(source, True):
             warnings.append(f"Integração {source} desconectada; histórico preservado.")
-        elif any(not os.environ.get(key) for key in keys[source]):
+        elif any(not credentials.get(source, {}).get(key) for key in keys[source]):
             warnings.append(f"Integração {source} sem credenciais; configure em Dados / Integrações.")
         else:
             available.append(source)
     if not available:
         raise RuntimeError("Nenhuma fonte disponível. Configure as integrações antes de sincronizar.")
     sources = tuple(available)
-    today = datetime.now(TZ).date()
+    today = datetime.now(default_tz()).date()
     history_path = root / 'data' / 'training_history.json'
     history_path.parent.mkdir(parents=True, exist_ok=True)
     if not history_path.exists():
         history_path.write_text('[]', encoding='utf-8')
     history = json.loads(history_path.read_text(encoding="utf-8-sig"))
-    start = sync_start(history, today, date.fromisoformat(os.environ.get("TRAINING_SYNC_START_DATE", "2024-01-01")), 7)
+    start = sync_start(history, today, settings.sync_start_date, 7)
     # Catch up sleep independently of activity dates after a missed collection.
     from scripts.sleep_data import sleep_rows
 
@@ -66,15 +83,15 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", 
         rows = sleep_rows(json.loads(sleep_path.read_text(encoding="utf-8-sig")), today.isoformat())
         if rows:
             start = min(start, date.fromisoformat(rows[-1]['date']) - timedelta(days=7))
-    stamp = datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(default_tz()).strftime("%Y%m%d_%H%M%S")
     output = root / "data" / "garmin_mcp_exports" / f"garmin_mcp_incremental_{stamp}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     args = [
         "--server-command",
-        os.environ.get("GARMIN_MCP_COMMAND", "mcp-garmin"),
+        settings.garmin_mcp_command,
         "--all-activities",
         "--max-activities",
-        os.environ.get("TRAINING_SYNC_MAX_ACTIVITIES", "5000"),
+        str(settings.sync_max_activities),
         "--start-date",
         str(start),
         "--end-date",
@@ -87,7 +104,7 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", 
         "--daily-tool",
         "get_daily_summary",
         "--max-detail-activities",
-        os.environ.get("TRAINING_SYNC_MAX_DETAIL_ACTIVITIES", "300"),
+        str(settings.sync_max_detail_activities),
     ]
     for tool in (
         "get_activity",
@@ -105,7 +122,13 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", 
         original_consolidated = consolidated.read_bytes() if consolidated.exists() else None
         try:
             if source == "garmin":
-                run_script("fetch_garmin_mcp_snapshot.py", *args, root=root, progress=progress)
+                run_script(
+                    "fetch_garmin_mcp_snapshot.py",
+                    *args,
+                    root=root,
+                    progress=progress,
+                    environment={**os.environ, **child_secrets["garmin"](credentials.get("garmin", {}))},
+                )
                 run_script(
                     "import_garmin_mcp_snapshot.py",
                     "--input",
@@ -140,6 +163,7 @@ def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", 
                     "--no-archive",
                     root=root,
                     progress=progress,
+                    environment={**os.environ, **child_secrets["hevy"](credentials.get("hevy", {}))},
                 )
                 run_script(
                     "import_hevy_workouts.py",
@@ -269,7 +293,9 @@ def training_snapshot(snapshot: dict) -> dict:
     return result
 
 
-def publish_report(snapshot: dict, job_id: str, runtime: Path, root: Path = ROOT, activate: bool = True) -> dict:
+def publish_report(
+    snapshot: dict, job_id: str, runtime: Path, root: Path = ROOT, activate: bool = True, *, settings=None
+) -> dict:
     staging = runtime / "staging" / job_id
     staging.mkdir(parents=True, exist_ok=False)
     try:
@@ -285,7 +311,11 @@ def publish_report(snapshot: dict, job_id: str, runtime: Path, root: Path = ROOT
         shutil.copy2(root / "dashboard" / "templates" / "weekly.typ", staging / "weekly.typ")
         for name in ("dashboard-html.typ", "report.css"):
             shutil.copy2(root / "dashboard" / "templates" / name, staging / name)
-        typst = os.environ.get("TYPST_BIN", "typst")
+        if settings is None:
+            from dashboard.settings import current
+
+            settings = current()
+        typst = settings.typst_bin
         subprocess.run(
             [typst, "compile", "--root", str(staging), str(staging / "weekly.typ"), str(staging / "report.pdf")],
             check=True,

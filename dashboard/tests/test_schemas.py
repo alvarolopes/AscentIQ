@@ -8,12 +8,11 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from dashboard.server import create_app
-from dashboard.snapshot import TZ
+from dashboard.settings import Settings, default_tz
 from dashboard.tests import pg
 
 
@@ -27,24 +26,18 @@ class SchemaValidationTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         (self.root / "data").mkdir()
         self.runtime = self.root / "runtime"
-        self.day = datetime.now(TZ).date()
+        self.day = datetime.now(default_tz()).date()
         self.headers = {"X-AscentIQ-Request": "1"}
-        self.env = patch.dict(
-            os.environ,
+        app_settings = Settings.from_env(
             {
+                **os.environ,
                 "DASHBOARD_USERNAME": "tester",
                 "DASHBOARD_PASSWORD": "synthetic-login-password",
                 "DASHBOARD_SCHEDULE_ENABLED": "false",
                 "DASHBOARD_SLEEP_SCHEDULE_ENABLED": "false",
-                "OPENAI_API_KEY": "",
-                "GARMIN_EMAIL": "",
-                "GARMIN_PASSWORD": "",
-                "HEVY_API_KEY": "",
-                "DASHBOARD_SECURE_COOKIES": "false",
-            },
+            }
         )
-        self.env.start()
-        self.client = TestClient(create_app(self.runtime, self.root))
+        self.client = TestClient(create_app(self.runtime, self.root, app_settings))
         self.assertEqual(
             self.client.post(
                 "/api/auth/login",
@@ -56,7 +49,6 @@ class SchemaValidationTests(unittest.TestCase):
 
     def tearDown(self):
         self.client.close()
-        self.env.stop()
         self.temp.cleanup()
 
     def post(self, path, value):

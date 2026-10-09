@@ -2,7 +2,6 @@
 
 import json
 import math
-import os
 from urllib.request import Request, urlopen
 
 from dashboard.daily_analysis import configuration
@@ -69,8 +68,13 @@ def validate(value, *, allow_unknown=False):
     return result
 
 
-def estimate(text, image=None):
-    if not configuration()['configured']:
+def estimate(text, image=None, *, ai=None):
+    if ai is None:
+        from dashboard.provider_settings import default_ai
+
+        ai = default_ai()
+    config = configuration(ai)
+    if not config['configured']:
         raise ValueError('A conexão com IA não está configurada. Copie o prompt e importe o JSON da análise.')
     content = text
     if image:
@@ -98,7 +102,7 @@ def estimate(text, image=None):
                 ],
             }
         ]
-    if configuration()['provider'] == 'ollama':
+    if config['provider'] == 'ollama':
         from dashboard.local_ai import request_text
 
         schema = {
@@ -121,19 +125,19 @@ def estimate(text, image=None):
                 'notes': {'type': 'string'},
             },
         }
-        output = request_text(INSTRUCTIONS, content, schema=schema)
+        output = request_text(INSTRUCTIONS, content, ai=ai, schema=schema)
         try:
             result = validate(json.loads(output))
         except (ValueError, TypeError) as error:
             raise RuntimeError(
                 'A estimativa local ficou incompleta. Revise a descrição e tente novamente; a refeição foi preservada.'
             ) from error
-        return {**result, 'source': 'ollama', 'model': configuration()['model']}
+        return {**result, 'source': 'ollama', 'model': config['model']}
     request = Request(
         'https://api.openai.com/v1/responses',
         data=json.dumps(
             {
-                'model': configuration()['model'],
+                'model': config['model'],
                 'instructions': INSTRUCTIONS,
                 'input': content,
                 'store': False,
@@ -141,7 +145,7 @@ def estimate(text, image=None):
                 'text': {'format': {'type': 'json_object'}},
             }
         ).encode(),
-        headers={'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json'},
+        headers={'Authorization': 'Bearer ' + (ai.api_key or ''), 'Content-Type': 'application/json'},
     )
     try:
         with urlopen(request, timeout=45) as response:
@@ -155,7 +159,7 @@ def estimate(text, image=None):
             for c in i.get('content', [])
             if c.get('type') == 'output_text'
         )
-        return {**validate(json.loads(output)), 'source': 'openai', 'model': configuration()['model']}
+        return {**validate(json.loads(output)), 'source': 'openai', 'model': config['model']}
     except Exception as error:
         raise RuntimeError(
             'Não foi possível obter uma estimativa válida da IA. Tente novamente ou importe a análise.'

@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 from psycopg.types.json import Jsonb
 
 from dashboard.repository import operational_db, operational_lock, read_dataset
+from dashboard.settings import default_tz
 
 MODEL_VERSION = "personal_energy_mifflin_v1"
 POLICY_VERSION = "conservative_trend_v1"
@@ -163,7 +164,8 @@ def _day(value):
 
 
 def _today(preferences=None):
-    return datetime.now(ZoneInfo((preferences or {}).get("timezone", "America/Sao_Paulo"))).date()
+    zone = (preferences or {}).get("timezone")
+    return datetime.now(ZoneInfo(zone) if zone else default_tz()).date()
 
 
 def _number(value, label, low=0, high=10000, nullable=True):

@@ -5,7 +5,6 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import os
 import threading
 import uuid
 from contextlib import contextmanager
@@ -32,7 +31,9 @@ class RevisionCache:
 
     @staticmethod
     def _enabled():
-        return os.environ.get("ASCENTIQ_REVISION_CACHE") != "false"
+        from dashboard.settings import current
+
+        return current().revision_cache
 
     def get(self, key, loader):
         if not self._enabled():
@@ -66,8 +67,25 @@ def datasets_in_postgres(root=ROOT):
     return Path(root).resolve() == ROOT.resolve()
 
 
+_database_override: str | None = None
+
+
+@contextmanager
+def use_database(name):
+    global _database_override
+    previous = _database_override
+    _database_override = name
+    try:
+        yield
+    finally:
+        _database_override = previous
+
+
 def connect(**kwargs):
     import psycopg
+
+    if _database_override is not None:
+        kwargs.setdefault("dbname", _database_override)
 
     return psycopg.connect(connect_timeout=10, **kwargs)
 
@@ -482,7 +500,9 @@ def row_factory(cursor):
 def operational_db():
     from psycopg import sql
 
-    schema = os.environ.get("ASCENTIQ_OPERATIONS_SCHEMA", "operations")
+    from dashboard.settings import current
+
+    schema = current().operations_schema
     with connect(row_factory=row_factory) as conn:
         conn.execute(sql.SQL("SET search_path TO {},public").format(sql.Identifier(schema)))
         yield conn

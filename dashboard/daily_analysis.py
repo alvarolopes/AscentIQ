@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import threading
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -12,6 +11,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from dashboard.settings import default_tz
 from scripts.sleep_data import sleep_rows, summarize_sleep
 
 INSTRUCTIONS = """Você analisa sessões de treinamento em português brasileiro.
@@ -91,7 +91,7 @@ def daily_context(snapshot: dict, day: date) -> dict:
     start = (day - timedelta(days=6)).isoformat()
     return {
         "date": selected,
-        "timezone": "America/Sao_Paulo",
+        "timezone": str(default_tz()),
         "session_count": len(standalone) + len(strength),
         "activities": standalone,
         "strength": safe_strength,
@@ -116,21 +116,26 @@ def prepare(snapshot: dict, day: date) -> dict:
     }
 
 
-def configuration() -> dict:
+def configuration(ai=None) -> dict:
     from dashboard.local_ai import configuration as provider_configuration
 
-    return provider_configuration()
+    return provider_configuration(ai)
 
 
-def ask_llm(prompt: str) -> str:
-    if configuration()['provider'] == 'ollama':
+def ask_llm(prompt: str, *, ai=None) -> str:
+    if ai is None:
+        from dashboard.provider_settings import default_ai
+
+        ai = default_ai()
+    config = configuration(ai)
+    if config['provider'] == 'ollama':
         from dashboard.local_ai import request_text
 
-        return request_text(INSTRUCTIONS, prompt)
-    if not configuration()["configured"]:
+        return request_text(INSTRUCTIONS, prompt, ai=ai)
+    if not config["configured"]:
         raise ValueError("Configure OPENAI_API_KEY no servidor ou copie o prompt e importe a resposta.")
     payload = {
-        "model": configuration()["model"],
+        "model": config["model"],
         "instructions": INSTRUCTIONS,
         "input": prompt,
         "store": False,
@@ -139,7 +144,7 @@ def ask_llm(prompt: str) -> str:
     request = Request(
         "https://api.openai.com/v1/responses",
         data=json.dumps(payload).encode(),
-        headers={"Authorization": "Bearer " + os.environ["OPENAI_API_KEY"], "Content-Type": "application/json"},
+        headers={"Authorization": "Bearer " + (ai.api_key or ""), "Content-Type": "application/json"},
     )
     try:
         with urlopen(request, timeout=45) as response:
@@ -173,27 +178,32 @@ class DailyReports:
         path = self.folder / (day.isoformat() + ".json")
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
-    def save(self, prepared: dict, manual: str | None = None):
+    def save(self, prepared: dict, manual: str | None = None, *, ai=None):
         if not prepared["context"]["session_count"]:
             raise ValueError("Não há treinos registrados nessa data.")
         if not self.lock.acquire(blocking=False):
             raise RuntimeError("Já existe uma análise sendo gerada. Aguarde e tente novamente.")
         try:
+            if ai is None:
+                from dashboard.provider_settings import default_ai
+
+                ai = default_ai()
+            config = configuration(ai)
             day = date.fromisoformat(prepared["date"])
             old = self.read(day)
             if (
                 manual is None
                 and old
                 and old["fingerprint"] == prepared["fingerprint"]
-                and old["source"] == configuration()['provider']
-                and old["model"] == configuration()["model"]
+                and old["source"] == config['provider']
+                and old["model"] == config["model"]
             ):
                 return old
             report = {
                 **prepared,
-                "text": manual if manual is not None else ask_llm(prepared["prompt"]),
-                "source": "manual" if manual is not None else configuration()['provider'],
-                "model": "Resposta importada" if manual is not None else configuration()["model"],
+                "text": manual if manual is not None else ask_llm(prepared["prompt"], ai=ai),
+                "source": "manual" if manual is not None else config['provider'],
+                "model": "Resposta importada" if manual is not None else config["model"],
                 "generated_at": datetime.now(UTC).isoformat(),
             }
             temporary = self.folder / (uuid.uuid4().hex + ".tmp")

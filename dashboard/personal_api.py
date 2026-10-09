@@ -20,11 +20,9 @@ from starlette.background import BackgroundTask
 
 from dashboard.artifacts import Artifacts
 from dashboard.assistant import answer, personal_period, prepare_personal, request_text
-from dashboard.daily_analysis import configuration
-from dashboard.health import ConflictError, HealthStore
+from dashboard.health import ConflictError
 from dashboard.imports import ImportService
 from dashboard.nutrition import validate
-from dashboard.provider_settings import ProviderSettings
 from dashboard.repository import PostgresRepository, datasets_in_postgres, read_files
 from dashboard.schemas import (
     AssistantRequest,
@@ -43,15 +41,24 @@ from dashboard.schemas import (
     RevisionedRecord,
     RevisionedValue,
 )
-from dashboard.snapshot import TZ, build_snapshot, medical_documents
+from dashboard.settings import default_tz
+from dashboard.snapshot import build_snapshot, medical_documents
 
 
-def install_personal_routes(app, runtime, root, diary, manager):
-    health = HealthStore(runtime, root)
+def configuration(ai=None):
+    from dashboard.daily_analysis import configuration as resolve
+
+    return resolve(ai)
+
+
+def install_personal_routes(app, runtime, root, diary, manager, *, health, providers, settings):
     health.seed_legacy(build_snapshot(root))
     imports = ImportService(runtime, root)
     artifacts = Artifacts(runtime, root)
-    providers = ProviderSettings(runtime)
+
+    def ai_payload() -> dict:
+        return configuration(providers.ai_configuration(settings))
+
     app.state.personal_health = health
     app.state.personal_artifacts = artifacts
     app.state.food_diary = diary
@@ -74,7 +81,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     from dashboard.nutrition_targets import NutritionTargets
 
-    targets = NutritionTargets(health, snapshot)
+    targets = NutritionTargets(health, snapshot, providers)
     app.state.nutrition_targets = targets
 
     @app.get('/api/nutrition-targets/{day}')
@@ -101,7 +108,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     @app.get('/api/personal')
     def read_personal(day: date | None = None, days: int = Query(default=14, ge=1, le=90)):
-        return personal(day or datetime.now(TZ).date(), days)
+        return personal(day or datetime.now(default_tz()).date(), days)
 
     @app.post('/api/personal/profile')
     def profile(payload: RevisionedValue):
@@ -112,24 +119,18 @@ def install_personal_routes(app, runtime, root, diary, manager):
     @app.post('/api/personal/preferences')
     def preferences(payload: RevisionedValue):
         result = perform(lambda: health.update('preferences', payload.value, payload.revision))
-        for field, env in (
-            ('weekly_sync', 'DASHBOARD_SCHEDULE_ENABLED'),
-            ('daily_sync', 'DASHBOARD_SLEEP_SCHEDULE_ENABLED'),
-        ):
-            if field in result['preferences']:
-                os.environ[env] = str(bool(result['preferences'][field])).lower()
         targets.refresh_async()
         return result
 
     @app.post('/api/personal/review')
     def review(payload: ReviewRequest):
-        return perform(lambda: health.review(payload.day or datetime.now(TZ).date(), snapshot(), diary))
+        return perform(lambda: health.review(payload.day or datetime.now(default_tz()).date(), snapshot(), diary))
 
     @app.post('/api/personal/proposals/{proposal_id}/decision')
     def decide(proposal_id: str, payload: DecisionRequest):
         return perform(
             lambda: health.decide(
-                proposal_id, payload.decision, payload.day or datetime.now(TZ).date(), snapshot(), diary
+                proposal_id, payload.decision, payload.day or datetime.now(default_tz()).date(), snapshot(), diary
             )
         )
 
@@ -227,7 +228,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
     ):
         return perform(
             lambda: prepare_assistant(
-                day or datetime.now(TZ).date(), days, include_medical, period=period, start=start, end=end
+                day or datetime.now(default_tz()).date(), days, include_medical, period=period, start=start, end=end
             )
         )
 
@@ -246,7 +247,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
                 documents=artifacts.read('documents'),
                 period=period,
             ),
-            **configuration(),
+            **ai_payload(),
         }
 
     @app.get('/api/assistant/history')
@@ -300,7 +301,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
                 and previous.get('data_fingerprint')
                 != prepare_day_review(day, previous.get('context', {}).get('user_report', ''))['data_fingerprint']
             )
-            config = configuration()
+            config = ai_payload()
             return {
                 'report': previous,
                 'stale': stale,
@@ -318,11 +319,13 @@ def install_personal_routes(app, runtime, root, diary, manager):
             from dashboard.day_review import QUESTION
 
             prepared = prepare_day_review(day, payload.notes)
-            config = configuration()
+            config = ai_payload()
             if not config['configured'] or config['provider'] != 'ollama':
                 raise ValueError('Configure o Ollama local para analisar o dia sem cobrança de API.')
             limit = int(health.read()['preferences'].get('ai_daily_limit', 20))
-            report = answer(artifacts, prepared, QUESTION, day, daily_limit=limit)
+            report = answer(
+                artifacts, prepared, QUESTION, day, ai=providers.ai_configuration(settings), daily_limit=limit
+            )
             fresh = prepare_day_review(day, prepared['context']['user_report'])
             return {
                 'report': report,
@@ -338,7 +341,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
     @app.post('/api/assistant')
     def assistant(payload: AssistantRequest):
         def generate():
-            day = payload.day or datetime.now(TZ).date()
+            day = payload.day or datetime.now(default_tz()).date()
             days = payload.days
             if not 1 <= days <= 90:
                 raise ValueError('Use um período de 1 a 90 dias.')
@@ -360,6 +363,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
                 prepared,
                 question,
                 day,
+                ai=providers.ai_configuration(settings),
                 manual_response=manual,
                 daily_limit=limit,
                 conversation_id=payload.conversation_id,
@@ -376,7 +380,10 @@ def install_personal_routes(app, runtime, root, diary, manager):
     def upload_document(payload: DocumentUpload):
         return perform(
             lambda: artifacts.upload_document(
-                payload.filename, payload.content, payload.label, (payload.date or datetime.now(TZ).date()).isoformat()
+                payload.filename,
+                payload.content,
+                payload.label,
+                (payload.date or datetime.now(default_tz()).date()).isoformat(),
             )
         )
 
@@ -437,7 +444,9 @@ def install_personal_routes(app, runtime, root, diary, manager):
                         ],
                     }
                 ]
-            value = json.loads(request_text(instructions, content, json_output=True))
+            value = json.loads(
+                request_text(instructions, content, ai=providers.ai_configuration(settings), json_output=True)
+            )
             if not isinstance(value, dict) or not isinstance(value.get('observations'), list):
                 raise ValueError('A IA não retornou uma extração válida.')
             return {'document': record, 'draft': value}
@@ -693,11 +702,3 @@ def install_personal_routes(app, runtime, root, diary, manager):
         except Exception:
             path.unlink(missing_ok=True)
             raise
-
-    preferences_state = health.read()['preferences']
-    for field, env in (
-        ('weekly_sync', 'DASHBOARD_SCHEDULE_ENABLED'),
-        ('daily_sync', 'DASHBOARD_SLEEP_SCHEDULE_ENABLED'),
-    ):
-        if field in preferences_state:
-            os.environ[env] = str(bool(preferences_state[field])).lower()

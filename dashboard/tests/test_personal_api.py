@@ -12,12 +12,12 @@ import unittest
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from fastapi.testclient import TestClient
 
 from dashboard.server import create_app
-from dashboard.snapshot import TZ
+from dashboard.settings import Settings, default_tz
 from dashboard.tests import pg
 
 
@@ -31,24 +31,18 @@ class PersonalApiTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         (self.root / "data").mkdir()
         self.runtime = self.root / "runtime"
-        self.day = datetime.now(TZ).date()
+        self.day = datetime.now(default_tz()).date()
         self.headers = {"X-AscentIQ-Request": "1"}
-        self.env = patch.dict(
-            os.environ,
+        self.app_settings = Settings.from_env(
             {
+                **os.environ,
                 "DASHBOARD_USERNAME": "tester",
                 "DASHBOARD_PASSWORD": "synthetic-login-password",
                 "DASHBOARD_SCHEDULE_ENABLED": "false",
                 "DASHBOARD_SLEEP_SCHEDULE_ENABLED": "false",
-                "OPENAI_API_KEY": "",
-                "GARMIN_EMAIL": "",
-                "GARMIN_PASSWORD": "",
-                "HEVY_API_KEY": "",
-                "DASHBOARD_SECURE_COOKIES": "false",
-            },
+            }
         )
-        self.env.start()
-        self.app = create_app(self.runtime, self.root)
+        self.app = create_app(self.runtime, self.root, self.app_settings)
         self.client = TestClient(self.app)
         self.assertEqual(
             self.client.post(
@@ -61,7 +55,6 @@ class PersonalApiTests(unittest.TestCase):
 
     def tearDown(self):
         self.client.close()
-        self.env.stop()
         self.temp.cleanup()
 
     def post(self, path, value, status=200):
@@ -225,7 +218,7 @@ class PersonalApiTests(unittest.TestCase):
             'model': 'qwen3.5:4b',
         }
 
-        def inference(text, image):
+        def inference(text, image, ai=None):
             staged = store.read(self.day)
             self.assertEqual(len(staged['entries']), 1)
             self.assertEqual(staged['pending_count'], 1)
@@ -252,7 +245,7 @@ class PersonalApiTests(unittest.TestCase):
                     'analysis': analysis,
                 },
             )
-            infer.assert_called_once_with('Banana de 50 g', None)
+            infer.assert_called_once_with('Banana de 50 g', None, ai=ANY)
         self.assertEqual(len(edited['entries']), 1)
         self.assertEqual(edited['entries'][0]['created_at'], created)
         self.assertEqual(edited['totals']['kcal'], 44.5)
@@ -300,11 +293,11 @@ class PersonalApiTests(unittest.TestCase):
                 f'/api/food/{self.day}/save',
                 {**payload, 'image': None, 'estimate_on_save': True, 'revision': original['revision']},
             )
-            infer.assert_called_once_with(payload['text'], image)
+            infer.assert_called_once_with(payload['text'], image, ai=ANY)
         self.assertEqual(saved['entries'][0]['image_id'], original['entries'][0]['image_id'])
         store = FoodDiary(self.runtime, self.root)
 
-        def concurrent_inference(text, photo):
+        def concurrent_inference(text, photo, ai=None):
             current = store.read(self.day)
             row = current['entries'][0]
             store.change(
@@ -382,7 +375,7 @@ class PersonalApiTests(unittest.TestCase):
         self.food(self.day, kcal=500)
         self.post('/api/integrations/ai', {'credentials': {'provider': 'ollama', 'local_model': 'qwen3.5:4b'}})
         before = self.summary()['state']['plans']
-        fixed = datetime.now(TZ).replace(second=0, microsecond=0)
+        fixed = datetime.now(default_tz()).replace(second=0, microsecond=0)
         from dashboard.day_review import SECTIONS
 
         sections = json.dumps({key: 'Análise sintética com limitações e opções condicionais.' for key in SECTIONS})
