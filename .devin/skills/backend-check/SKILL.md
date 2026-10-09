@@ -21,11 +21,11 @@ Always set `PYTHONUTF8=1`. Run from the repository root.
 
 Run, in order, and stop at the first failure:
 
-1. `python -B -m dashboard.tests.empty_installation_smoke`
-2. `python -B -m pytest dashboard/tests tests -q` (falls back to
-   `python -B -m unittest discover -s dashboard/tests -v` and `-s tests -v` if pytest is not installed yet)
-3. `python -m ruff check .` and `python -m ruff format --check .` (skip with a note if ruff is not configured yet)
-4. `python -m mypy dashboard` (skip with a note if mypy is not configured yet)
+1. `python -m ruff check .` and `python -m ruff format --check .`
+2. `python -m mypy`
+3. `python -B -m dashboard.tests.empty_installation_smoke`
+4. `python -B -m pytest` (the pyproject testpaths cover `dashboard/tests` and `tests`)
+5. `python -m dashboard.openapi_export --check`
 
 Rules that apply to every backend change:
 

@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from dashboard.snapshot import ROOT, TZ, build_snapshot
+from dashboard.snapshot import ROOT, TZ
 
 
 def run_script(name: str, *arguments: str, root: Path = ROOT, progress=lambda _: None) -> None:
@@ -24,8 +24,8 @@ def run_script(name: str, *arguments: str, root: Path = ROOT, progress=lambda _:
 
 
 def sync_sources(root: Path = ROOT, progress=lambda _: None, sources=("garmin", "hevy")) -> list[str]:
-    from scripts.env_utils import load_dotenv
     from scripts.compute_garmin_sync_window import sync_start
+    from scripts.env_utils import load_dotenv
 
     load_dotenv(root / ".env")
     keys = {"garmin": ("GARMIN_EMAIL", "GARMIN_PASSWORD"), "hevy": ("HEVY_API_KEY",)}

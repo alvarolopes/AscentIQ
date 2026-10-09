@@ -1,7 +1,8 @@
 """Typed request envelopes; domain dicts keep flowing to existing validators."""
 from __future__ import annotations
 
-from datetime import date, date as _date
+from datetime import date
+from datetime import date as _date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator

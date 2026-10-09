@@ -2,8 +2,8 @@ import json
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from dashboard.jobs import JobManager, sleep_schedule_slot

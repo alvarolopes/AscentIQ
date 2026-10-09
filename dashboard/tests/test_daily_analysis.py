@@ -6,10 +6,11 @@ import unittest
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
+
 from fastapi.testclient import TestClient
-from dashboard.server import create_app
 
 from dashboard.daily_analysis import DailyReports, ask_llm, prepare
+from dashboard.server import create_app
 from dashboard.tests import test_dashboard
 
 
@@ -73,7 +74,8 @@ class DailyTests(unittest.TestCase):
 
 
 class DailyApiTests(test_dashboard.Fixture):
-    login = test_dashboard.ApiTests.login
+    def login(self):
+        return self.client.post("/api/auth/login", json={"username":"alvaro","password":"test-only-password"}, headers={"X-AscentIQ-Request":"1"})
 
     def setUp(self):
         super().setUp()

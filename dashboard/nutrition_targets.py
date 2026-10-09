@@ -10,8 +10,18 @@ import time
 import uuid
 from datetime import timedelta
 
-from dashboard.health import (_active_plan, _effective_values, _goals_for_day, _model, _policy,
-                              _primary_goal, _profile_for_day, _stamp, _today, _weights)
+from dashboard.health import (
+    _active_plan,
+    _effective_values,
+    _goals_for_day,
+    _model,
+    _policy,
+    _primary_goal,
+    _profile_for_day,
+    _stamp,
+    _today,
+    _weights,
+)
 from dashboard.local_ai import configuration, request_text
 
 METHOD = 'daily_local_ai_targets_v2'
@@ -126,9 +136,9 @@ class NutritionTargets:
         self.health, self.snapshot = health, snapshot
         self.lock = threading.Lock()
         self.wake, self.stop = threading.Event(), threading.Event()
-        self.thread = None
+        self.thread: threading.Thread | None = None
         self.status, self.message, self.missing = 'waiting', '', []
-        self.last_attempt = 0
+        self.last_attempt = 0.0
         self.attempt_fingerprint = None
 
     def view(self, day):

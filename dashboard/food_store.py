@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import json
 import math
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from dashboard.repository import operational_db, postgres_enabled
@@ -141,7 +141,7 @@ class FoodDiary:
                     if comparable(present) == comparable(entry):
                         return self._view(day, state)
                     entry = {**entry, 'created_at': present.get('created_at'),
-                             'updated_at': datetime.now(timezone.utc).isoformat()}
+                             'updated_at': datetime.now(UTC).isoformat()}
                     state['entries'] = [entry if x['id'] == entry['id'] else x for x in state['entries']]
                     action = 'edit'
                 else:
@@ -162,7 +162,7 @@ class FoodDiary:
             if relevant(old) == relevant(state):
                 return self._view(day, state)
             state['history'] = old.get('history', []) + [{'revision': old.get('revision', 0),
-                'state': relevant(old), 'action': action, 'at': datetime.now(timezone.utc).isoformat()}]
+                'state': relevant(old), 'action': action, 'at': datetime.now(UTC).isoformat()}]
             state['revision'] = old.get('revision', 0) + 1
             conn.execute('INSERT INTO food_diary_state(day,payload) VALUES(?,?) ON CONFLICT(day) DO UPDATE SET payload=excluded.payload',
                          (day.isoformat(), json.dumps(state, ensure_ascii=False, allow_nan=False)))

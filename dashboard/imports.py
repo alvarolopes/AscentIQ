@@ -17,7 +17,7 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from dashboard.repository import operational_db, read_dataset
@@ -36,7 +36,7 @@ def _canonical(value):
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _uid(value):
@@ -374,7 +374,7 @@ class ImportService:
                 primary, secondary = find(a), find(b)
                 if primary != secondary:
                     parent[secondary] = primary
-        groups = {}
+        groups: dict = {}
         for rid in all_records:
             groups.setdefault(find(rid), []).append(rid)
         records, suppressed = [], []
@@ -409,9 +409,9 @@ class ImportService:
             result["source"] = "+".join(sorted({str(x.get("source") or x.get("format")) for x in sources}))
             records.append(result)
             suppressed.extend(result["legacy_refs"])
-        candidates = []
+        candidates: list = []
         visible = [*records, *[row for rid, row in legacy.items() if legacy[rid]["legacy_id"] not in suppressed]]
-        buckets = {}
+        buckets: dict = {}
         for row in visible:
             buckets.setdefault((row.get("date"), _kind(row.get("type"))), []).append(row)
         truncated = False
@@ -498,7 +498,7 @@ class ImportService:
         originals = {str(row.get("id")): row for row in result.get("activities", [])}
         activities = [row for row in result.get("activities", []) if str(row.get("id")) not in suppressed]
         for record in view["records"]:
-            baseline = next((originals[ref] for ref in record["legacy_refs"] if ref in originals), {})
+            baseline: dict = next((originals[ref] for ref in record["legacy_refs"] if ref in originals), {})
             activities.append({**baseline, **record})
         activities.sort(key=lambda x: (x.get("date") or "", x.get("date_time") or ""), reverse=True)
         result["activities"], result["routes"], result["imports"] = activities, view["routes"], view

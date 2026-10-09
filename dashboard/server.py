@@ -5,10 +5,10 @@ import hmac
 import json
 import os
 import secrets
-import sqlite3
 import time
-from datetime import date
+import uuid
 from contextlib import asynccontextmanager, contextmanager
+from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -17,13 +17,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from dashboard.jobs import JobManager
 from dashboard.daily_analysis import DailyReports, configuration, prepare
-from dashboard.snapshot import ROOT, build_snapshot, medical_documents
+from dashboard.jobs import JobManager
+from dashboard.nutrition import FoodDiary, estimate, prompt, validate
 from dashboard.repository import connect, operational_db, postgres_enabled
-from dashboard.nutrition import FoodDiary, estimate, validate, prompt
-from datetime import datetime, timezone
-import uuid
+from dashboard.snapshot import ROOT, build_snapshot, medical_documents
 
 RUNTIME = Path(os.environ.get("DASHBOARD_RUNTIME", str(ROOT / "runtime" / "dashboard")))
 COOKIE = "ascentiq_session"
@@ -106,7 +104,6 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
         if os.name != "nt":
             auth_path.chmod(0o600)
     auth = json.loads(auth_path.read_text(encoding="utf-8"))
-    session_db = runtime / "sessions.sqlite"
 
     @contextmanager
     def sessions():
@@ -277,7 +274,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
                 return {**current, 'analysis_status': 'estimated'}
             entry = {'id': identifier,
                 'meal': payload.meal, 'text': payload.text, 'analysis': analysis,
-                'image_id': image_id, 'created_at': datetime.now(timezone.utc).isoformat(),
+                'image_id': image_id, 'created_at': datetime.now(UTC).isoformat(),
                 'source': 'reviewed' if analysis else 'pending',
                 **({'save_token': token} if payload.estimate_on_save else {})}
             saved = food_diary.change(day, entry=entry,

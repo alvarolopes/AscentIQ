@@ -7,7 +7,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dashboard.artifacts import Artifacts
-from dashboard.assistant import MAX_CONTEXT_BYTES, MAX_CONTEXT_TOKENS, _estimated_tokens, answer, personal_period, prepare_personal
+from dashboard.assistant import (
+    MAX_CONTEXT_BYTES,
+    MAX_CONTEXT_TOKENS,
+    _estimated_tokens,
+    answer,
+    personal_period,
+    prepare_personal,
+)
 
 
 class Diary:
@@ -42,7 +49,7 @@ class AssistantContextTests(unittest.TestCase):
 
     def test_selected_details_keep_whole_period_totals_and_exclude_credentials(self):
         day = date(2024, 2, 29)
-        state = {'goals': [], 'plans': [], 'measurements': [], 'checkins': [], 'decisions': []}
+        state: dict = {'goals': [], 'plans': [], 'measurements': [], 'checkins': [], 'decisions': []}
         activities = [{'id': str(i), 'date': day.isoformat(), 'name': 'Synthetic activity ' + 'x' * 900,
                        'duration_seconds': 600, 'kind': 'running', 'distance_km': 1} for i in range(40)]
         result = prepare_personal(day, 29, {'activities': activities}, state,
@@ -69,14 +76,14 @@ class AssistantContextTests(unittest.TestCase):
                 result['entries'][0]['analysis'] = None
                 result['pending_count'] = 1
                 return result
-        state = {'goals': [], 'plans': [], 'measurements': [], 'checkins': [], 'decisions': []}
+        state: dict = {'goals': [], 'plans': [], 'measurements': [], 'checkins': [], 'decisions': []}
         prepared = prepare_personal(date(2024, 2, 1), 1, {}, state, {}, Pending())
         self.assertIsNone(prepared['context']['meal_details'][0]['totals']['protein_g'])
 
     def test_long_plan_and_body_report_keep_month_usable(self):
         day = date(2024, 2, 29)
         dates = [(day - timedelta(days=i)).isoformat() for i in range(28, -1, -1)]
-        state = {'goals': [], 'plans': [], 'measurements': [], 'checkins': [], 'decisions': []}
+        state: dict = {'goals': [], 'plans': [], 'measurements': [], 'checkins': [], 'decisions': []}
         snapshot = {'body': {'reference_date': '2024-01-01',
                      'current': {'weight_kg': 80, **{f'measurement_{i}': 12.34 for i in range(40)}},
                      'skinfolds_current_mm': {f'site_{i}': 10.5 for i in range(20)}}}

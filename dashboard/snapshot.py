@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import json
 import unicodedata
 from collections import Counter
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
-from dashboard.repository import (REVISION, SNAPSHOT_CACHE, dataset_bytes, postgres_enabled,
-                                  read_dataset, repository_context, revision_metadata)
-from scripts.sleep_data import sleep_rows, summarize_sleep
+
+from dashboard.repository import (
+    REVISION,
+    SNAPSHOT_CACHE,
+    dataset_bytes,
+    postgres_enabled,
+    read_dataset,
+    repository_context,
+    revision_metadata,
+)
 from scripts.build_performance_management_model import build_recovery_summary
+from scripts.sleep_data import sleep_rows, summarize_sleep
 
 ROOT = Path(__file__).resolve().parents[1]
 TZ = ZoneInfo("America/Sao_Paulo")
@@ -151,7 +158,7 @@ def _build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
             "pace": row.get("pace_avg"), "source": row.get("source"), "hevy_workout_id": row.get("hevy_workout_id"),
         })
     activities.sort(key=lambda x: (x.get("date") or "", x.get("date_time") or ""), reverse=True)
-    strengths = []
+    strengths: list = []
     for row in strength:
         workout_ids = row.get("hevy_workout_ids") or ([row["hevy_workout_id"]] if row.get("hevy_workout_id") else [])
         exercises = [exercise for workout_id in workout_ids for exercise in hevy.get(workout_id, {}).get("exercises", [])]

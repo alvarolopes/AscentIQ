@@ -12,7 +12,7 @@ import json
 import math
 import statistics
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -104,7 +104,7 @@ def _legacy_goal(value, category, today):
 
 
 def _stamp():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _day(value):
@@ -175,15 +175,15 @@ def _validate_section(section, value):
             raise ValueError('A atualização automática das metas deve ser verdadeiro ou falso.')
         if row.get("energy_method", "auto") not in {"auto", "model", "wearable"}:
             raise ValueError("Método de gasto deve ser auto, model ou wearable.")
-        limits = {"activity_factor": (1, 2.5), "review_days": (7, 90), "review_frequency_days": (1, 90),
+        limits: dict[str, tuple[float, float]] = {"activity_factor": (1, 2.5), "review_days": (7, 90), "review_frequency_days": (1, 90),
                   "min_complete_days": (1, 90), "min_weight_measurements": (4, 90),
                   "adjustment_kcal": (25, 200), "initial_deficit_kcal": (0, 500),
                   "max_planned_deficit_pct": (0, 0.2), "min_target_kcal": (1000, 4000),
                   "trend_tolerance_kg_week": (0.05, 0.5), "adherence_tolerance_pct": (0.05, 0.3),
                   "desired_weekly_change_kg": (-0.5, 0.5), "sleep_target_hours": (5, 12), "ai_daily_limit": (0, 100)}
-        for key, (low, high) in limits.items():
-            if key in row:
-                _number(row[key], key, low, high, nullable=False)
+        for field, (minimum, maximum) in limits.items():
+            if field in row:
+                _number(row[field], field, minimum, maximum, nullable=False)
         policy = _policy(row)
         if policy["min_complete_days"] > policy["review_days"] or policy["min_weight_measurements"] > policy["review_days"]:
             raise ValueError("A cobertura mínima não pode exceder a janela de revisão.")

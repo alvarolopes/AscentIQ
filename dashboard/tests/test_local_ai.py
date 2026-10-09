@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
 from dashboard import local_ai, nutrition
 from dashboard.provider_settings import ProviderSettings
 
@@ -50,7 +51,7 @@ class LocalAiTests(unittest.TestCase):
                 paid.assert_not_called()
 
     def test_photo_is_attached_locally_without_external_url(self):
-        content=[{'role':'user','content':[{'type':'input_text','text':'Foto sintética'},{'type':'input_image','image_url':'data:image/png;base64,c3ludGhldGlj'}]}]
+        content: list =[{'role':'user','content':[{'type':'input_text','text':'Foto sintética'},{'type':'input_image','image_url':'data:image/png;base64,c3ludGhldGlj'}]}]
         value=local_ai.messages('Estime',content)
         self.assertEqual(value[1]['images'],['c3ludGhldGlj'])
         content[0]['content'][1]['image_url']='https://example.com/private.png'

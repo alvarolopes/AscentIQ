@@ -83,6 +83,19 @@ docker compose --profile maintenance run --rm db-tools test
 
 Esse comando cria um banco temporário, verifica a instalação vazia e executa as suítes de API, dados, energia, adaptação, importação, concorrência e recuperação. O GitHub Actions executa os testes com PostgreSQL descartável e constrói a UI.
 
+No ambiente local, com `.venv` instalado a partir de `dashboard/requirements-dev.txt`, os mesmos testes e verificações do CI são:
+
+```powershell
+python -B -m dashboard.tests.empty_installation_smoke
+pytest
+ruff check .
+ruff format --check .
+mypy
+python -m dashboard.openapi_export --check
+```
+
+O commit de formatação está em `.git-blame-ignore-revs`; configure uma vez com `git config blame.ignoreRevsFile .git-blame-ignore-revs` para o `git blame` ignorá-lo.
+
 ## Desenvolvimento da interface
 
 O frontend oficial fica em `dashboard/web`. Node 24 LTS é necessário:

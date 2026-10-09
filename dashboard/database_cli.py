@@ -11,9 +11,18 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from dashboard.repository import (ROOT, CURRENT, PostgresRepository, connect, migrate,
-                                 read_files, contents_digest, document_manifest, import_operations)
-from dashboard.snapshot import build_snapshot, TZ
+from dashboard.repository import (
+    CURRENT,
+    ROOT,
+    PostgresRepository,
+    connect,
+    contents_digest,
+    document_manifest,
+    import_operations,
+    migrate,
+    read_files,
+)
+from dashboard.snapshot import TZ, build_snapshot
 
 
 def bootstrap():
@@ -77,8 +86,9 @@ def validate(root):
 
 
 def restore_test(archive, output):
-    from dashboard.backup import decrypt, verify
     from psycopg import sql
+
+    from dashboard.backup import decrypt, verify
     verification = verify(archive,output / "recovery.key",output)
     database = "ascentiq_restore_" + uuid.uuid4().hex[:12]
     user = os.environ["PGUSER"]
@@ -91,9 +101,15 @@ def restore_test(archive, output):
             plain = temp / "restore.tar.gz"
             decrypt(archive,(output / "recovery.key").read_bytes(),plain)
             with tarfile.open(plain,"r:gz") as tar:
-                expected = json.load(tar.extractfile("database/manifest.json"))
+                manifest_stream = tar.extractfile("database/manifest.json")
+                if manifest_stream is None:
+                    raise RuntimeError("Invalid backup format")
+                expected = json.load(manifest_stream)
                 dump = temp / "postgres.dump"
-                with tar.extractfile("database/postgres.dump") as source, dump.open("wb") as dest:
+                dump_stream = tar.extractfile("database/postgres.dump")
+                if dump_stream is None:
+                    raise RuntimeError("Missing archive entry")
+                with dump_stream as source, dump.open("wb") as dest:
                     import shutil
                     shutil.copyfileobj(source,dest)
             env = {**os.environ,"PGDATABASE":database}
@@ -145,6 +161,7 @@ def main():
     parser.add_argument("--input",type=Path)
     parser.add_argument("--dataset",choices=("body_metrics","medical_history","physiology_tests","athlete_profile","athlete_preferences","season_goals","mountains_history","nutrition_targets","upcoming_races_2026"))
     args = parser.parse_args()
+    result: dict
     if args.command == "bootstrap":
         bootstrap()
         result = {"migrated":True}
@@ -165,8 +182,8 @@ def main():
             raise RuntimeError("Archive and key directory are required")
         result = restore_test(args.archive,args.output)
     elif args.command == "replace":
-        from dashboard.jobs import JobManager, now
         from dashboard.database_pipeline import run_database_pipeline
+        from dashboard.jobs import JobManager, now
         if not args.dataset or args.input is None:
             raise RuntimeError("A reviewed dataset and input JSON are required")
         raw = args.input.read_bytes()

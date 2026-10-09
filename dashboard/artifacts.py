@@ -9,7 +9,7 @@ import os
 import tempfile
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from dashboard.repository import operational_db, postgres_enabled
@@ -53,7 +53,7 @@ class Artifacts:
             comparable = lambda value: {k: v for k, v in value.items() if k not in ('created_at', 'updated_at')}
             if previous and comparable(previous) == comparable(record):
                 return previous
-            stamp = datetime.now(timezone.utc).isoformat()
+            stamp = datetime.now(UTC).isoformat()
             record['created_at'] = (previous or {}).get('created_at') or record.get('created_at') or stamp
             record['updated_at'] = stamp
             if previous:

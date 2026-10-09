@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+
 from dashboard.nutrition import FoodDiary, validate
 
 

@@ -128,9 +128,9 @@ class PersonalApiTests(unittest.TestCase):
     def test_save_automatically_estimates_and_retry_does_not_duplicate(self):
         from dashboard.food_store import FoodDiary
         store = FoodDiary(self.runtime, self.root)
-        payload = {'id': str(uuid.uuid4()), 'meal': 'Lanche', 'text': 'Banana de 100 g',
+        payload: dict = {'id': str(uuid.uuid4()), 'meal': 'Lanche', 'text': 'Banana de 100 g',
                    'estimate_on_save': True, 'save_token': str(uuid.uuid4()), 'revision': 0}
-        analysis = {'items': [{'name': 'Banana 100 g', 'kcal': 89, 'protein_g': 1.1,
+        analysis: dict = {'items': [{'name': 'Banana 100 g', 'kcal': 89, 'protein_g': 1.1,
                               'carbs_g': 23, 'fat_g': 0.3}], 'notes': 'Estimativa sintética.',
                     'source': 'ollama', 'model': 'qwen3.5:4b'}
         def inference(text, image):

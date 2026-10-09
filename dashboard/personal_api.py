@@ -10,7 +10,7 @@ import math
 import os
 import tempfile
 import zipfile
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from fastapi import HTTPException, Query
@@ -20,16 +20,29 @@ from starlette.background import BackgroundTask
 from dashboard.artifacts import Artifacts
 from dashboard.assistant import answer, personal_period, prepare_personal, request_text
 from dashboard.daily_analysis import configuration
-from dashboard.health import HealthStore, ConflictError
+from dashboard.health import ConflictError, HealthStore
 from dashboard.imports import ImportService
 from dashboard.nutrition import validate
 from dashboard.provider_settings import ProviderSettings
 from dashboard.repository import PostgresRepository, postgres_enabled, read_files
-from dashboard.schemas import (AssistantRequest, DayReviewRequest, DecisionRequest, DocumentExtraction,
-                               DocumentReview, DocumentUpload, ImportRequest, PlanningRecord,
-                               ProviderConfiguration, RecipeRequest, ReconcileRequest, RecordRemoval,
-                               ReviewRequest, RevisionedRecord, RevisionedValue)
-from dashboard.snapshot import build_snapshot, medical_documents, TZ
+from dashboard.schemas import (
+    AssistantRequest,
+    DayReviewRequest,
+    DecisionRequest,
+    DocumentExtraction,
+    DocumentReview,
+    DocumentUpload,
+    ImportRequest,
+    PlanningRecord,
+    ProviderConfiguration,
+    RecipeRequest,
+    ReconcileRequest,
+    RecordRemoval,
+    ReviewRequest,
+    RevisionedRecord,
+    RevisionedValue,
+)
+from dashboard.snapshot import TZ, build_snapshot, medical_documents
 
 
 def install_personal_routes(app, runtime, root, diary, manager):
@@ -315,7 +328,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
                 if not isinstance(item, dict) or not item.get('name') or len(json.dumps(item)) > 3000:
                     raise ValueError('Observação inválida.')
             return artifacts.save('documents', {**record, 'observations': observations, 'reviewed': True,
-                'reviewed_at': datetime.now(timezone.utc).isoformat()})
+                'reviewed_at': datetime.now(UTC).isoformat()})
         return perform(save)
 
     @app.post('/api/documents/{document_id}/remove')
@@ -419,7 +432,7 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     def export_content():
         datasets = PostgresRepository().files()[1] if postgres_enabled(root) else read_files(root)
-        content = {'schema_version': 1, 'exported_at': datetime.now(timezone.utc).isoformat(),
+        content = {'schema_version': 1, 'exported_at': datetime.now(UTC).isoformat(),
                    'units': 'metric; original units retained in source payloads',
                    'personal': health.read(), 'food': diary.export(), 'imports': imports.read(),
                    'personal_revisions': {str(revision): health.read(revision) for revision in

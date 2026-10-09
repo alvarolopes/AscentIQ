@@ -1,10 +1,11 @@
 import unittest
 from datetime import date
+
 from dashboard.daily_analysis import prepare
 from dashboard.snapshot import build_snapshot
 from dashboard.tests.test_dashboard import Fixture
-from scripts.sleep_data import summarize_sleep
 from scripts.build_performance_management_model import build_recovery_summary
+from scripts.sleep_data import summarize_sleep
 
 
 def sleep_fixture():

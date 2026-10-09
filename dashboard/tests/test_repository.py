@@ -6,11 +6,21 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from dashboard.backup import create_backup, verify
 import dashboard.repository as repository_module
-from dashboard.repository import (ROOT, CURRENT, FILES_CACHE, PostgresRepository, canonical, connect,
-                                 contents_digest, migrate, read_dataset, validate_path,
-                                 operational_db, identity)
+from dashboard.backup import create_backup, verify
+from dashboard.repository import (
+    CURRENT,
+    FILES_CACHE,
+    ROOT,
+    PostgresRepository,
+    connect,
+    contents_digest,
+    identity,
+    migrate,
+    operational_db,
+    read_dataset,
+    validate_path,
+)
 
 
 class LocalRepositoryTests(unittest.TestCase):
@@ -19,7 +29,7 @@ class LocalRepositoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
             manager = JobManager(root / "runtime",root)
-            key = manager.enqueue("generate")
+            manager.enqueue("generate")
             job = manager.list()[0]
             with patch("dashboard.jobs.rebuild") as rebuild, patch("dashboard.jobs.publish_report"):
                 manager.process(job)
@@ -75,7 +85,7 @@ class LocalRepositoryTests(unittest.TestCase):
             corrupt = bytearray(archive.read_bytes())
             corrupt[-20] ^= 1
             archive.write_bytes(corrupt)
-            with self.assertRaises(Exception):
+            with self.assertRaises(Exception):  # noqa: B017 - InvalidTag da cryptography, não RuntimeError
                 verify(archive,output / "recovery.key")
 
 
@@ -128,7 +138,7 @@ class PostgresIntegrationTests(unittest.TestCase):
         files = self.fixture("duplicate")
         row = json.loads(files["data/training_history.json"])[0]
         files["data/training_history.json"] = json.dumps([row,row]).encode()
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception):  # noqa: B017 - psycopg.errors.UniqueViolation no Postgres
             repo.publish(files,reason="synthetic",expected=initial)
         self.assertEqual(repo.active(),initial)
 
@@ -171,7 +181,7 @@ class PostgresIntegrationTests(unittest.TestCase):
         repo = PostgresRepository()
         FILES_CACHE.invalidate()
         first = repo.publish(self.fixture("cache-v1"), reason="synthetic", expected=repo.active())
-        queries = []
+        queries: list = []
         real_connect = repository_module.connect
         with patch.object(repository_module, "connect",
                           side_effect=lambda **kwargs: Recording(real_connect(**kwargs), queries)):
@@ -184,9 +194,10 @@ class PostgresIntegrationTests(unittest.TestCase):
         FILES_CACHE.invalidate()
 
     def test_postgres_auth_and_job_exclusion(self):
+        from fastapi.testclient import TestClient
+
         from dashboard.jobs import JobManager
         from dashboard.server import create_app
-        from fastapi.testclient import TestClient
         with tempfile.TemporaryDirectory() as name, patch.dict(os.environ,{"DATABASE_BACKEND":"postgres","DASHBOARD_PASSWORD":"synthetic-test","DASHBOARD_USERNAME":"athlete"}):
             runtime = Path(name)
             client = TestClient(create_app(runtime))

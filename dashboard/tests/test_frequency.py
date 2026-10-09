@@ -1,5 +1,7 @@
 import unittest
+
 from dashboard.frequency import frequency
+
 
 class FrequencyTests(unittest.TestCase):
     def test_counts_records_without_linked_duplicates_and_preserves_pending(self):

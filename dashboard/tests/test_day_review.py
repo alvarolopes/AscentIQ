@@ -1,9 +1,9 @@
 """Clock, coverage and privacy regressions for synthetic daily coaching context."""
-import os
 import json
+import os
 import tempfile
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -99,7 +99,7 @@ class DayReviewTests(unittest.TestCase):
         self.assertEqual(result['context']['training']['session_count'], 2)
         self.assertEqual(len(result['context']['planning_today']), 1)
         self.assertNotIn('future-plan-marker', result['prompt'])
-        for notes in (True, [], 'x' * 3001):
+        for notes in [True, [], 'x' * 3001]:
             with self.assertRaises(ValueError): self.prepare(notes=notes)
 
     def test_confirmed_large_estimated_deficit_requires_usable_coverage(self):

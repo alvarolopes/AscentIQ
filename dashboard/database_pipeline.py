@@ -2,16 +2,14 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import tempfile
-import uuid
 from datetime import datetime
 from pathlib import Path
 
 from dashboard.pipeline import publish_report, rebuild, sync_sources
-from dashboard.repository import PostgresRepository, connect, read_files, document_manifest
-from dashboard.snapshot import build_snapshot, TZ
+from dashboard.repository import PostgresRepository, connect, document_manifest, read_files
+from dashboard.snapshot import TZ, build_snapshot
 
 
 def backup_if_due(root, runtime, progress):

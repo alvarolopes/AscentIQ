@@ -1,11 +1,10 @@
 """Focused regressions using temporary data and no external provider requests."""
 import base64
 import json
-import os
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -84,7 +83,7 @@ class BackendSafetyTests(unittest.TestCase):
 
     def test_assistant_quota_uses_personal_timezone_at_midnight(self):
         store = Artifacts(self.runtime, self.root)
-        fixed = datetime(2026, 10, 4, 1, 0, tzinfo=timezone.utc)
+        fixed = datetime(2026, 10, 4, 1, 0, tzinfo=UTC)
         store.save('assistant', {'id': 'earlier', 'source': 'openai', 'created_at': '2026-10-03T23:00:00+00:00'})
         class Clock(datetime):
             @classmethod

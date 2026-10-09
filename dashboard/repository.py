@@ -16,8 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ATHLETE_ID = uuid.UUID("9dcb4c42-e857-4279-b06e-7e29d9c714d8")
 LOCK_ID = 1730962174
-CURRENT = ContextVar("athlete_repository", default=None)
-REVISION = ContextVar("athlete_revision", default=None)
+CURRENT: ContextVar[dict | None] = ContextVar("athlete_repository", default=None)
+REVISION: ContextVar[uuid.UUID | None] = ContextVar("athlete_revision", default=None)
 
 
 class RevisionCache:

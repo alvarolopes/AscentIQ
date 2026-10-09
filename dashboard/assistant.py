@@ -6,9 +6,9 @@ import json
 import os
 import re
 import threading
-from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import UTC, date, datetime, timedelta
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 from dashboard.daily_analysis import configuration
 from scripts.sleep_data import sleep_rows
@@ -73,7 +73,7 @@ def _table(rows, columns):
 
 def _summarize(rows, fields, *, totals=False, endpoints=False):
     """Aggregate every eligible observation before selecting dated details."""
-    result = {'observations': len(rows)}
+    result: dict = {'observations': len(rows)}
     for field in fields:
         known = sorted((row for row in rows if isinstance(row.get(field), (int, float))
                         and not isinstance(row.get(field), bool)), key=lambda row: str(row.get('date', '')))
@@ -203,7 +203,7 @@ def prepare_personal(day, days, snapshot, state, summary, diary, *, include_medi
     goals = [x for x in summary.get('goals', state['goals']) if eligible(x)]
     goal_fields = ('id', 'type', 'status', 'priority', 'effective_from', 'due_date', 'target_kcal',
                    'target_value', 'target_unit', 'desired_weekly_change_kg', 'preserve', 'description')
-    primary_goal = summary.get('active_goal') or next(iter(sorted((x for x in goals if x.get('status', 'active') == 'active'),
+    primary_goal: dict = summary.get('active_goal') or next(iter(sorted((x for x in goals if x.get('status', 'active') == 'active'),
                                       key=lambda x: (x.get('priority', 20), x.get('created_at', '')))), {})
     selected_goals = sorted((x for x in goals if x.get('id') != primary_goal.get('id')),
                             key=lambda x: (x.get('status', 'active') != 'active', x.get('priority', 20), x.get('created_at', '')))
@@ -395,7 +395,7 @@ def _answer(artifacts, prepared, question, day, *, manual_response=None, daily_l
     def local_day(item):
         try:
             stamp = datetime.fromisoformat(item.get('created_at', '').replace('Z', '+00:00'))
-            return stamp.replace(tzinfo=timezone.utc).astimezone(zone).date() if stamp.tzinfo is None else stamp.astimezone(zone).date()
+            return stamp.replace(tzinfo=UTC).astimezone(zone).date() if stamp.tzinfo is None else stamp.astimezone(zone).date()
         except (ValueError, TypeError):
             return None
     calls_today = sum(1 for x in history if x.get('source') == config['provider'] and local_day(x) == current_day)
@@ -420,4 +420,4 @@ def _answer(artifacts, prepared, question, day, *, manual_response=None, daily_l
         'conversation_id': conversation_id,
         'message_ids': [x['id'] for x in turns], 'withheld_medical_turns': withheld,
         'data_fingerprint': prepared.get('data_fingerprint'),
-        'created_at': datetime.now(timezone.utc).isoformat()})
+        'created_at': datetime.now(UTC).isoformat()})

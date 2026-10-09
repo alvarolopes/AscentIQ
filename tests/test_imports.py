@@ -8,7 +8,7 @@ import struct
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -16,8 +16,13 @@ from unittest.mock import patch
 from dashboard.imports import ImportService
 from dashboard.repository import operational_db
 from scripts.fetch_garmin_mcp_snapshot import extract_activity_ids, fetch_all_activities, filter_known_activities
-from scripts.import_garmin_mcp_snapshot import extract_activities, extract_daily_energy, merge_daily_energy, merge_history, normalize_activity
-
+from scripts.import_garmin_mcp_snapshot import (
+    extract_activities,
+    extract_daily_energy,
+    merge_daily_energy,
+    merge_history,
+    normalize_activity,
+)
 
 CSV = "id,date,type,duration_seconds,name,distance_km,elevation_gain_m,avg_hr,calories\na,2026-10-01T08:00:00-03:00,Run,1800,Easy run,5,20,135,450\n"
 GPX = '<gpx xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Planned route</name><trkseg><trkpt lat="-23.0" lon="-46.0"><ele>100</ele><time>2026-10-01T08:00:00Z</time></trkpt><trkpt lat="-23.001" lon="-46.001"><ele>110</ele><time>2026-10-01T08:30:00Z</time></trkpt></trkseg></trk></gpx>'
@@ -30,8 +35,8 @@ def synthetic_fit():
               (11, 2, 0x84), (16, 1, 2), (17, 1, 2), (22, 2, 0x84)]
     definition = bytes([0x40, 0, 0]) + struct.pack("<H", 18) + bytes([len(fields)])
     definition += b"".join(bytes(field) for field in fields)
-    epoch = datetime(1989, 12, 31, tzinfo=timezone.utc)
-    start = int((datetime(2026, 10, 1, 11, tzinfo=timezone.utc) - epoch).total_seconds())
+    epoch = datetime(1989, 12, 31, tzinfo=UTC)
+    start = int((datetime(2026, 10, 1, 11, tzinfo=UTC) - epoch).total_seconds())
     message = b"\x00" + struct.pack("<IBIIIHBBH", start, 1, 1800000, 1700000, 500000, 450, 135, 160, 20)
     payload = definition + message
     header = bytes([12, 0x20]) + struct.pack("<HI", 100, len(payload)) + b".FIT"
@@ -276,8 +281,9 @@ class GarminImportTests(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("DATABASE_TEST_ENABLED") == "1", "Disposable PostgreSQL not configured")
 class PostgresImportTests(unittest.TestCase):
     def test_operational_imports_and_reconciliation_use_postgres(self):
-        from dashboard.repository import ROOT, migrate
         import uuid
+
+        from dashboard.repository import ROOT, migrate
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"DATABASE_BACKEND": "postgres"}), patch("dashboard.imports.read_dataset", return_value=[]):
             migrate()
             runtime = Path(temp)

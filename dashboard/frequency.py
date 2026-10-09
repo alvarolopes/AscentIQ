@@ -1,9 +1,11 @@
 """Count daily records while deduplicating linked strength sessions."""
 from datetime import date, timedelta
+
 from scripts.sleep_data import sleep_rows
 
+
 def frequency(snapshot, food, year):
-    rows = {}
+    rows: dict[str, dict] = {}
     current, end = date(year, 1, 1), date(year, 12, 31)
     while current <= end:
         key = current.isoformat()
@@ -31,7 +33,8 @@ def frequency(snapshot, food, year):
         row = rows.get(key)
         if row is None:
             continue
-        entries,values = state.get('entries', []),[]
+        entries = state.get('entries', [])
+        values: list[float] = []
         row['meal_count'] = len(entries)
         for entry in entries:
             items = (entry.get('analysis') or {}).get('items', [])

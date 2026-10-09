@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 import os
 import sqlite3
@@ -10,8 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from dashboard.pipeline import publish_report, rebuild, sync_sources
-from dashboard.snapshot import ROOT, TZ, build_snapshot
 from dashboard.repository import operational_db, postgres_enabled
+from dashboard.snapshot import ROOT, TZ, build_snapshot
 
 
 @contextmanager
@@ -28,7 +29,7 @@ def process_lock(path: Path):
             msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
         else:
             import fcntl
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # fcntl só existe em POSIX; o branch é os.name != "nt"
         yield
     finally:
         handle.close()
@@ -54,7 +55,7 @@ class JobManager:
         self.runtime, self.root = runtime, root
         runtime.mkdir(parents=True, exist_ok=True)
         self.stop = threading.Event()
-        self.thread = None
+        self.thread: threading.Thread | None = None
         with self.db() as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, mode TEXT, status TEXT, created_at TEXT, finished_at TEXT, message TEXT, warnings TEXT, schedule_key TEXT UNIQUE)")
             conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
@@ -84,7 +85,7 @@ class JobManager:
             conn.execute("INSERT INTO jobs VALUES (?, ?, 'queued', ?, NULL, 'Aguardando execução', '[]', ?)", (job_id, mode, now(), schedule_key))
             return job_id
 
-    def update(self, job_id: str, status: str, message: str, warnings: list | None = None):
+    def update(self, job_id: str, status: str, message: str, warnings: builtins.list | None = None):
         with self.db() as conn:
             conn.execute("UPDATE jobs SET status=?, message=?, warnings=?, finished_at=? WHERE id=?",
                          (status, message, json.dumps(warnings or [], ensure_ascii=False), now() if status in {"completed", "partial", "failed"} else None, job_id))

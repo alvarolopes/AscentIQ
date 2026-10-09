@@ -23,7 +23,7 @@ class NutritionTargetTests(unittest.TestCase):
         self.health.update('profile', {'age': 43, 'sex': 'male', 'height_cm': 180, 'weight_kg': 80})
         self.health.save('goals', {'id': 'synthetic-goal', 'type': 'fat_loss', 'status': 'active',
                          'description': 'Reduzir gordura preservando endurance', 'priority': 1})
-        self.snapshot = {'activities': [{'id': 'a', 'date': self.day.isoformat(), 'kind': 'run',
+        self.snapshot: dict = {'activities': [{'id': 'a', 'date': self.day.isoformat(), 'kind': 'run',
                          'duration_seconds': 3600, 'distance_km': 10, 'elevation_gain_m': 100}],
                          'medical': {'records': ['private medical fixture']}, 'gpx': 'private geometry fixture'}
         self.targets = NutritionTargets(self.health, lambda: self.snapshot)

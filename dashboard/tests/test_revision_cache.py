@@ -4,8 +4,8 @@ import uuid
 from datetime import date
 from unittest.mock import patch
 
-from dashboard.repository import FILES_CACHE, SNAPSHOT_CACHE, PostgresRepository, RevisionCache, ROOT, read_dataset
 import dashboard.snapshot as snapshot_module
+from dashboard.repository import FILES_CACHE, ROOT, SNAPSHOT_CACHE, PostgresRepository, RevisionCache, read_dataset
 from dashboard.snapshot import build_snapshot
 
 
@@ -22,7 +22,9 @@ class RevisionCacheTests(unittest.TestCase):
         cache = RevisionCache()
         revision = uuid.uuid4()
         calls = []
-        loader = lambda: calls.append(1) or {"path": b"raw"}
+        def loader():
+            calls.append(1)
+            return {"path": b"raw"}
         first = cache.get(revision, loader)
         second = cache.get(revision, loader)
         self.assertEqual(len(calls), 1)
@@ -32,7 +34,9 @@ class RevisionCacheTests(unittest.TestCase):
         cache = RevisionCache()
         first, second = uuid.uuid4(), uuid.uuid4()
         calls = []
-        loader = lambda: calls.append(1) or {}
+        def loader():
+            calls.append(1)
+            return {}
         cache.get(first, loader)
         cache.get(second, loader)
         cache.get(first, loader)
@@ -42,7 +46,9 @@ class RevisionCacheTests(unittest.TestCase):
         cache = RevisionCache()
         revision = uuid.uuid4()
         calls = []
-        loader = lambda: calls.append(1) or {}
+        def loader():
+            calls.append(1)
+            return {}
         cache.get(revision, loader)
         cache.invalidate()
         cache.get(revision, loader)

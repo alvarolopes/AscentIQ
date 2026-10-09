@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from dashboard.health import _active_plan
@@ -211,7 +211,7 @@ def prepare(day, snapshot, state, summary, diary, *, notes='', planning=None, no
         zone = ZoneInfo(summary.get('profile', {}).get('timezone') or 'America/Sao_Paulo')
     except (ValueError, TypeError, KeyError):
         zone = ZoneInfo('America/Sao_Paulo')
-    stamp = (now or datetime.now(timezone.utc)).astimezone(zone).replace(second=0, microsecond=0)
+    stamp = (now or datetime.now(UTC)).astimezone(zone).replace(second=0, microsecond=0)
     if day > stamp.date():
         raise ValueError('A análise usa o dia atual ou uma data passada, não um dia futuro.')
     selected, start = day.isoformat(), (day - timedelta(days=6)).isoformat()

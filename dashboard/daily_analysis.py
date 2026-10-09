@@ -6,10 +6,11 @@ import json
 import os
 import threading
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
 from scripts.sleep_data import sleep_rows, summarize_sleep
 
 INSTRUCTIONS = """Você analisa sessões de treinamento em português brasileiro.
@@ -124,7 +125,7 @@ class DailyReports:
             report = {**prepared, "text": manual if manual is not None else ask_llm(prepared["prompt"]),
                       "source": "manual" if manual is not None else configuration()['provider'],
                       "model": "Resposta importada" if manual is not None else configuration()["model"],
-                      "generated_at": datetime.now(timezone.utc).isoformat()}
+                      "generated_at": datetime.now(UTC).isoformat()}
             temporary = self.folder / (uuid.uuid4().hex + ".tmp")
             try:
                 temporary.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
