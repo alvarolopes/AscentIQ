@@ -1,0 +1,14 @@
+[
+  {"date": "2026-09-01", "date_time": "2026-09-01T06:30:00", "name": "Corrida base sintética", "type": "Run", "duration_seconds": 2700, "distance_km": 8.0, "avg_hr": 138, "max_hr": 152, "elevation_gain_m": 40},
+  {"date": "2026-09-03", "date_time": "2026-09-03T06:30:00", "name": "Corrida limiar sintética", "type": "Run", "classification_hint": "limiar", "duration_seconds": 2400, "distance_km": 8.5, "avg_hr": 158, "max_hr": 170, "elevation_gain_m": 30},
+  {"date": "2026-09-05", "date_time": "2026-09-05T18:00:00", "name": "Força pernas sintética", "type": "Weight Training", "duration_seconds": 3600, "hevy_total_sets": 18, "hevy_working_sets": 14, "hevy_total_reps": 140, "hevy_total_volume_kg": 4200, "hevy_classification": "legs"},
+  {"date": "2026-09-08", "date_time": "2026-09-08T06:30:00", "name": "Corrida base sintética 2", "type": "Run", "duration_seconds": 3000, "distance_km": 9.0, "avg_hr": 140, "max_hr": 155, "elevation_gain_m": 55},
+  {"date": "2026-09-10", "date_time": "2026-09-10T19:00:00", "name": "Pedal sintético", "type": "Bike", "duration_seconds": 5400, "distance_km": 40.0, "avg_hr": 125, "max_hr": 140, "elevation_gain_m": 300},
+  {"date": "2026-09-12", "date_time": "2026-09-12T07:00:00", "name": "Longão sintético", "type": "Run", "classification_hint": "longao", "duration_seconds": 6300, "distance_km": 18.0, "avg_hr": 145, "max_hr": 160, "elevation_gain_m": 120},
+  {"date": "2026-09-15", "date_time": "2026-09-15T18:00:00", "name": "Força push sintética", "type": "Weight Training", "duration_seconds": 3300, "hevy_total_sets": 15, "hevy_working_sets": 12, "hevy_total_reps": 120, "hevy_total_volume_kg": 2800, "hevy_classification": "push"},
+  {"date": "2026-09-17", "date_time": "2026-09-17T06:30:00", "name": "Corrida regenerativa sintética", "type": "Run", "duration_seconds": 1800, "distance_km": 5.0, "avg_hr": 128, "max_hr": 140, "elevation_gain_m": 15},
+  {"date": "2026-09-20", "date_time": "2026-09-20T07:00:00", "name": "Corrida sem FC sintética", "type": "Run", "duration_seconds": 2700, "distance_km": 8.0, "elevation_gain_m": 45},
+  {"date": "2026-09-22", "date_time": "2026-09-22T06:30:00", "name": "Corrida base sintética 3", "type": "Run", "duration_seconds": 2850, "distance_km": 8.5, "avg_hr": 139, "max_hr": 153, "elevation_gain_m": 38},
+  {"date": "2026-09-25", "date_time": "2026-09-25T06:00:00", "name": "Caminhada sintética", "type": "Walk", "duration_seconds": 3600, "distance_km": 6.0},
+  {"date": "2026-09-27", "date_time": "2026-09-27T07:00:00", "name": "Prova simulada sintética", "type": "Run", "elapsed_time": "00:55:00", "distance_km": 10.0, "avg_hr": 160, "max_hr": 172, "elevation_gain_m": 60}
+]

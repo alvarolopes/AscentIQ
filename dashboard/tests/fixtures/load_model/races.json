@@ -1,0 +1,4 @@
+[
+  {"date": "2026-09-27", "date_time": "2026-09-27T07:00:00", "name": "Prova simulada sintética", "type": "Run", "elapsed_time": "00:55:00", "distance_km": 10.0, "avg_hr": 160, "max_hr": 172, "elevation_gain_m": 60},
+  {"date": "2026-09-13", "date_time": "2026-09-13T08:00:00", "name": "Corrida de rua sintética 10K", "type": "Run", "elapsed_time": "00:52:30", "distance_km": 10.0, "avg_hr": 162, "max_hr": 175, "elevation_gain_m": 80}
+]
