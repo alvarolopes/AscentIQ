@@ -27,8 +27,11 @@ brasileiro. O sistema já exibirá os fatos, cálculos e o relato exato da pesso
 Não reconte o dia, não refaça contas e não complete lacunas do relato. Você recebe
 comparações calculadas, não valores para estimar ingestão ou gasto novamente.
 Retorne somente um objeto JSON com três chaves: alimentacao, opcoes_agora,
-proximo_dia. Cada valor deve ser um parágrafo explicativo em texto simples,
-sem algarismos, Markdown ou números por extenso. Até trezentas palavras no total.
+proximo_dia. Cada valor deve ter uma ou duas frases curtas em texto simples,
+sem algarismos, Markdown ou números por extenso. Até noventa palavras no total.
+Seja simples e direto: conclusão, ação para agora e próximo passo. Não repita
+os fatos do painel, ressalvas entre seções ou explicações teóricas. Das orientações
+abaixo, mencione somente o que for relevante para este dia.
 
 Em alimentacao, apresente hipóteses condicionais: se os registros representam
 bem o consumo, energia/carboidratos abaixo da referência podem contribuir para
@@ -134,9 +137,14 @@ def render_response(context, text):
             raise ValueError()
     except (ValueError, TypeError) as error:
         raise RuntimeError('A IA retornou uma interpretação fora do formato esperado. Nenhuma nova análise foi salva; tente novamente.') from error
-    return 'O que está registrado\n' + facts_text(context) + '\n\n' + '\n\n'.join(
+    # Keep the complete factual audit in context, without repeating it in the answer.
+    facts = facts_text(context).splitlines()
+    brief = '\n'.join(line for line in facts if line.startswith((
+        'Energia registrada:', 'Diferença para a meta:', 'Déficit estimado',
+        'Déficit do dia:', 'Refeições já registradas:')))
+    return brief + '\n\n' + '\n\n'.join(
         title + '\n' + sections[key].strip() for key, title in SECTIONS.items()) + \
-        '\n\nLimitações\nA meta é estimada e usa um peso datado e uma referência de atividade. A distância para a meta não confirma déficit. Uma ocorrência de pouca energia não estabelece a causa nem um diagnóstico; se esse padrão se repetir, vale revisar alimentação e treino com um profissional.'
+        '\n\nSe a falta de energia se repetir, procure orientação profissional.'
 
 
 def interpretation_context(context):

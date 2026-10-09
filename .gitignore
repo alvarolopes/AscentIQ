@@ -52,6 +52,10 @@ tmp/
 *.p12
 dashboard/web/node_modules/
 dashboard/web/dist/
+dashboard/web/.next/
+dashboard/web/test-results/
+dashboard/web/playwright-report/
+*.tsbuildinfo
 *.dump
 *.tar.gz.enc
 recovery.key

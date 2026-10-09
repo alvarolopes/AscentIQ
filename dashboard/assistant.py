@@ -23,7 +23,11 @@ Diário parcial não comprova déficit; valores estimados não são medições e
 Respeite a prioridade dos objetivos ativos. Objetivos concluídos são históricos.
 Não diagnostique, prescreva medicamentos ou garanta resultado/prazo corporal.
 Proponha ajustes proporcionais à evidência e explique o que falta quando necessário.
-Uma resposta não modifica automaticamente perfil, dados ou plano. Até 900 palavras.'''
+Uma resposta não modifica automaticamente perfil, dados ou plano.
+Seja simples e direto: até 120 palavras por padrão. Comece pela conclusão e dê
+no máximo três ações práticas, quando úteis. Use frases curtas e linguagem comum.
+Não repita o painel, a pergunta, ressalvas ou explicações teóricas. Mencione apenas
+a incerteza que muda a recomendação. Aprofunde somente se a pessoa pedir detalhes.'''
 
 INSTRUCTIONS += '''
 Use a conversa anterior apenas para compreender a pergunta atual; respostas antigas
@@ -74,6 +78,9 @@ def _summarize(rows, fields, *, totals=False, endpoints=False):
         known = sorted((row for row in rows if isinstance(row.get(field), (int, float))
                         and not isinstance(row.get(field), bool)), key=lambda row: str(row.get('date', '')))
         values = [row[field] for row in known]
+        if not values:
+            result[field] = {'known_count': 0}
+            continue
         result[field] = {'known_count': len(values), 'min': min(values) if values else None,
                          'max': max(values) if values else None,
                          'mean': round(sum(values) / len(values), 2) if values else None}
@@ -83,6 +90,19 @@ def _summarize(rows, fields, *, totals=False, endpoints=False):
         if totals:
             result[field]['sum_registered'] = round(sum(values), 2) if values else None
     return result
+
+
+def _tabular_summaries(value):
+    """Encode repeated aggregate labels once while retaining every statistic."""
+    if not isinstance(value, dict):
+        return value
+    metrics = [(key, row) for key, row in value.items() if isinstance(row, dict) and 'known_count' in row]
+    if 'observations' in value and metrics:
+        columns = [key for key in ('known_count', 'min', 'max', 'mean', 'sum_registered', 'first', 'last')
+                   if any(key in row for _, row in metrics)]
+        return {'observations': value['observations'], 'columns': ['metric', *columns],
+                'rows': [[key, *[row.get(field) for field in columns]] for key, row in metrics]}
+    return {key: _tabular_summaries(row) for key, row in value.items()}
 
 
 def personal_period(day, days=14, *, period='days', start=None, end=None):
@@ -256,7 +276,7 @@ def prepare_personal(day, days, snapshot, state, summary, diary, *, include_medi
                'selection': {'all_daily_totals_included': True, 'meal_detail_count': len(detail_meals),
                    'activity_count': len(activities), 'strength_count': len(strength), 'plan_count': len(plans),
                    'goal_count': len(goals), 'primary_goal_always_included': bool(primary_goal),
-                   'method': 'Totais diários e resumos usam todo o período; detalhes de refeições, treinos e planos são selecionados do mais recente. Força inclui nomes dos exercícios e totais, sem todas as séries. Referências médicas exigem autorização explícita.'}}
+                   'method': 'Resumos integrais; detalhes recentes selecionados. daily_rows informa a cobertura dos detalhes.'}}
     # Never transmit medical or route geometry merely to estimate a meal or discuss training.
     if include_medical:
         context['medical'] = {'records': [x for x in snapshot.get('medical', {}).get('records', [])
@@ -303,6 +323,30 @@ def prepare_personal(day, days, snapshot, state, summary, diary, *, include_medi
             while oversized() and len(context[key]['rows']) > 1:
                 context[key]['rows'].pop(0)
     selection = context['selection']
+    selection['body_details_included'] = True
+    selection['plan_rationale_included'] = True
+    if oversized():
+        # Keep dated core body measurements, not the entire anthropometry report.
+        core_body = ('date', 'weight_kg', 'body_fat_pct', 'lean_mass_kg', 'waist_cm', 'bmi')
+        reference = context['body_reference']
+        for key in ('current', 'latest_before_period'):
+            if isinstance(reference.get(key), dict):
+                reference[key] = _fields(reference[key], core_body)
+        for key in ('perimetry_current_cm', 'skinfolds_current_mm'):
+            reference.pop(key, None)
+        selection['body_details_included'] = False
+    if oversized():
+        # Long model-written rationales are available in Goals and narrower views.
+        # Never shorten numeric targets, coverage or period aggregates to fit them.
+        context['active_plan'].pop('reason', None)
+        context['active_plan'].pop('limitations', None)
+        selection['plan_rationale_included'] = False
+    if oversized() and context.get('period_summaries'):
+        context['period_summaries'] = _tabular_summaries(context['period_summaries'])
+        selection['period_summaries_tabular'] = True
+        for key in ('load', 'sleep', 'checkins', 'measurements', 'energy', 'food'):
+            if oversized():
+                context[key]['rows'] = []
     selection.update({key + '_included': len(context[key]) for key in ('meal_details', 'activities', 'strength', 'plans')})
     if context['active_plan'] and not any(x.get('id') == context['active_plan'].get('id') for x in context['plans']):
         selection['plans_included'] += 1

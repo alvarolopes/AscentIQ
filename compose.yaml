@@ -73,14 +73,29 @@ services:
       db:
         condition: service_healthy
     entrypoint: ["python", "-m", "dashboard.database_cli"]
-  web:
+  frontend:
     build:
       context: .
       dockerfile: dashboard/Dockerfile.web
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      BACKEND_INTERNAL_URL: http://api:8788
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+  web:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile.gateway
     ports:
       - "127.0.0.1:8787:80"
     depends_on:
-      api:
+      frontend:
         condition: service_healthy
     restart: unless-stopped
 volumes:

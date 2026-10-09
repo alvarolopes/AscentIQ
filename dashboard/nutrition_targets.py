@@ -43,7 +43,9 @@ catabolismo ou síntese proteica individual. Não use 'maximizar', 'maximizada',
 Não chame um peso antigo de peso atual. Ausência de data de evento significa
 proximidade desconhecida, nunca prova de que não exista evento futuro.
 Escreva uma justificativa concreta: referência estimada, ajuste escolhido, proteína,
-distribuição dos macros e o que falta para validar a meta. Evite certezas clínicas.
+distribuição dos macros e o que falta para validar a meta. Use no máximo sessenta
+palavras em reason e até três limitações curtas, sem repetir a justificativa.
+Use linguagem simples e direta. Evite certezas clínicas.
 O gasto de referência já inclui atividade habitual: não some treinos novamente.
 Gastos de relógio com cobertura parcial não são totais diários completos.
 Não compense refeições, não invente medidas, não diagnostique nem prescreva

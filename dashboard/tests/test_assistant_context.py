@@ -19,6 +19,13 @@ class Diary:
                 'fasting_declared': False, 'complete_nutrition': False}
 
 
+def metric(summary, name):
+    if 'rows' in summary:
+        row = next(row for row in summary['rows'] if row[0] == name)
+        return dict(zip(summary['columns'][1:], row[1:]))
+    return summary[name]
+
+
 class AssistantContextTests(unittest.TestCase):
     def prepared(self, scope=None):
         return {'fingerprint': 'synthetic', 'prompt': 'Current synthetic data',
@@ -63,6 +70,32 @@ class AssistantContextTests(unittest.TestCase):
         prepared = prepare_personal(date(2024, 2, 1), 1, {}, state, {}, Pending())
         self.assertIsNone(prepared['context']['meal_details'][0]['totals']['protein_g'])
 
+    def test_long_plan_and_body_report_keep_month_usable(self):
+        day = date(2024, 2, 29)
+        dates = [(day - timedelta(days=i)).isoformat() for i in range(28, -1, -1)]
+        state = {'goals': [], 'plans': [], 'measurements': [], 'checkins': [], 'decisions': []}
+        snapshot = {'body': {'reference_date': '2024-01-01',
+                     'current': {'weight_kg': 80, **{f'measurement_{i}': 12.34 for i in range(40)}},
+                     'skinfolds_current_mm': {f'site_{i}': 10.5 for i in range(20)}}}
+        plan = {'id': 'synthetic-plan', 'target_kcal': 2400, 'protein_g': 160,
+                'reason': 'Synthetic rationale with assumptions and alternatives. ' * 35,
+                'limitations': ['Synthetic limitation about coverage. ' * 3 for _ in range(9)]}
+        summary = {'active_plan': plan, 'series': [{'date': value, 'expenditure_kcal': 2800,
+                  'expenditure_status': 'available', 'intake_kcal': 500, 'usable': False} for value in dates]}
+        result = prepare_personal(day, 29, snapshot, state, summary, Diary(), period='month')
+        context = result['context']
+        self.assertEqual(context['active_plan']['target_kcal'], 2400)
+        self.assertEqual(context['active_plan']['protein_g'], 160)
+        self.assertEqual(context['body_reference']['current']['weight_kg'], 80)
+        self.assertEqual(context['body_reference']['reference_date'], '2024-01-01')
+        if context['selection']['plan_rationale_included']:
+            self.assertEqual(context['active_plan']['reason'], plan['reason'])
+        else:
+            self.assertNotIn('reason', context['active_plan'])
+        self.assertFalse(context['selection']['body_details_included'])
+        self.assertEqual(metric(context['period_summaries']['registered_food'], 'kcal')['sum_registered'], 14500)
+        self.assertLessEqual(_estimated_tokens(json.dumps(context, ensure_ascii=False)), MAX_CONTEXT_TOKENS)
+
     def test_dense_ninety_day_period_keeps_aggregate_facts_with_explicit_selection(self):
         day = date(2024, 3, 31)
         dates = [(day - timedelta(days=i)).isoformat() for i in range(89, -1, -1)]
@@ -77,9 +110,9 @@ class AssistantContextTests(unittest.TestCase):
         prepared = prepare_personal(day, 90, snapshot, state, {'series': energy}, Diary())
         context = prepared['context']
         self.assertEqual(context['period']['from'], dates[0])
-        self.assertEqual(context['period_summaries']['registered_food']['kcal']['sum_registered'], 45000)
-        self.assertEqual(context['period_summaries']['sleep']['duration_minutes']['known_count'], 90)
-        self.assertEqual(context['period_summaries']['sleep']['duration_minutes']['mean'], 420)
+        self.assertEqual(metric(context['period_summaries']['registered_food'], 'kcal')['sum_registered'], 45000)
+        self.assertEqual(metric(context['period_summaries']['sleep'], 'duration_minutes')['known_count'], 90)
+        self.assertEqual(metric(context['period_summaries']['sleep'], 'duration_minutes')['mean'], 420)
         self.assertEqual(context['period_summaries']['food_coverage']['complete_nutrition_days'], 0)
         self.assertEqual(context['period_summaries']['food_coverage']['days_with_meals'], 90)
         self.assertFalse(context['selection']['all_daily_totals_included'])
@@ -121,7 +154,7 @@ class AssistantContextTests(unittest.TestCase):
         context = prepared['context']
         self.assertEqual(context['selection']['daily_rows']['food']['total'], 31)
         self.assertEqual(context['selection']['daily_rows']['energy']['total'], 31)
-        self.assertEqual(context['period_summaries']['registered_food']['kcal']['sum_registered'], 15500)
+        self.assertEqual(metric(context['period_summaries']['registered_food'], 'kcal')['sum_registered'], 15500)
         self.assertEqual(context['period_summaries']['energy_by_status']['available']['observations'], 31)
         self.assertEqual(context['period']['from'], '2024-03-01')
 

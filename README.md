@@ -1,5 +1,7 @@
 # AscentIQ — saúde e fitness pessoal
 
+Frontend: **Next.js 16.4 · React 19.3 · Tailwind 4.3 · shadcn/ui**, com rotas App Router e componentes em TypeScript estrito. Sem styled-components.
+
 Uma plataforma individual para reunir treinos, alimentação, sono, medidas e objetivos. Os registros ficam estruturados e datados; os cálculos mostram a origem e a cobertura dos dados. A inteligência artificial ajuda a interpretar esse histórico e estimar refeições, sempre com revisão do usuário.
 
 ## O que funciona
@@ -18,8 +20,8 @@ Uma plataforma individual para reunir treinos, alimentação, sono, medidas e ob
 ## Navegação e uso
 
 O menu flutuante à esquerda contém **Dashboard, Workouts, Nutrition e Sleep**.
-Em telas pequenas, o botão do menu abre uma gaveta. Abaixo do nome do usuário,
-**Conta e dados** reúne **Dados e fontes**, **Perfil e medidas** e **Sair**.
+Em telas pequenas, o botão abre um menu compacto. A conta fica à direita da topbar,
+com **Conta e perfil**, **Dados e fontes** e **Sair** em um dropdown.
 A sincronização Garmin/Hevy e a configuração da IA ficam em Dados e fontes;
 documentos privados são acessados a partir dessa área.
 
@@ -50,12 +52,12 @@ explica e sugere; as respostas não alteram automaticamente seus registros ou pl
 Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preencha duas senhas distintas de banco e mantenha `DATABASE_BACKEND=postgres`. Credenciais Garmin, Hevy e IA são opcionais e podem ser cadastradas no painel.
 
 ```powershell
-docker compose build api web
+docker compose build api frontend web
 docker compose --profile local-ai up -d db ollama
 docker compose --profile local-ai exec ollama ollama pull qwen3.5:4b
 docker compose --profile maintenance run --rm db-tools bootstrap
 docker compose --profile maintenance run --rm db-tools init-empty
-docker compose up -d api web
+docker compose up -d api frontend web
 ```
 
 Abra [AscentIQ local](http://localhost:8787). O primeiro acesso está no arquivo privado `runtime/dashboard/access.txt`, salvo quando não foi configurada uma senha no ambiente. Defina seu perfil e objetivo, conecte fontes ou registre dados manualmente. Exemplos deste repositório não viram registros pessoais.
@@ -80,6 +82,26 @@ docker compose --profile maintenance run --rm db-tools test
 ```
 
 Esse comando cria um banco temporário, verifica a instalação vazia e executa as suítes de API, dados, energia, adaptação, importação, concorrência e recuperação. O GitHub Actions executa os testes com PostgreSQL descartável e constrói a UI.
+
+## Desenvolvimento da interface
+
+O frontend oficial fica em `dashboard/web`. Node 24 LTS é necessário:
+
+```powershell
+cd dashboard/web
+npm ci
+npm run lint
+npm run typecheck
+npm run check:styles
+npm test
+npm run build
+npx playwright install chromium
+npm run test:e2e
+```
+
+Para desenvolvimento com o backend na mesma origem, configure `DEV_API_URL` com a URL interna da API e execute `npm run dev`. Em produção, `frontend` executa Next standalone como usuário sem privilégios e `web` é o gateway Nginx; somente o gateway publica a porta 8787. As consultas de saúde não são armazenadas em cache compartilhado. Os testes E2E usam um backend sintético isolado, sem escrever no diário real.
+
+Instruções de manutenção estão em [AGENTS.md](dashboard/web/AGENTS.md). O [plano e resultado da migração](docs/PLANO_MIGRACAO_NEXT_SHADCN.md) registra versões, validação, skills e rollback. Para instalar a PWA pelo IP da rede local, o navegador ainda exige HTTPS confiável; localhost permite a validação local do service worker.
 
 ## Limites explícitos
 

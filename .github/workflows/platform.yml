@@ -52,9 +52,28 @@ jobs:
           cache-dependency-path: dashboard/web/package-lock.json
       - run: npm ci
         working-directory: dashboard/web
+      - run: npm run lint
+        working-directory: dashboard/web
+      - run: npm run typecheck
+        working-directory: dashboard/web
+      - run: npm run check:styles
+        working-directory: dashboard/web
+      - run: npm run format:check
+        working-directory: dashboard/web
+      - run: npm test
+        working-directory: dashboard/web
       - run: npm run build
         working-directory: dashboard/web
-      - run: node --test dashboard/tests/sleepView.test.mjs
+      - run: npx playwright install --with-deps chromium
+        working-directory: dashboard/web
+      - run: npm run test:e2e
+        working-directory: dashboard/web
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: web-playwright-failure
+          path: dashboard/web/test-results/
+          retention-days: 7
   reports:
     runs-on: ubuntu-latest
     steps:

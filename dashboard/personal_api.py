@@ -48,6 +48,11 @@ def install_personal_routes(app, runtime, root, diary, manager):
 
     app.state.personal_snapshot = snapshot
 
+    @app.get('/api/frequency')
+    def record_frequency(year: int = Query(ge=2000, le=2100)):
+        from dashboard.frequency import frequency
+        return frequency(snapshot(), diary.export(), year)
+
     from dashboard.nutrition_targets import NutritionTargets
     targets = NutritionTargets(health, snapshot)
     app.state.nutrition_targets = targets
