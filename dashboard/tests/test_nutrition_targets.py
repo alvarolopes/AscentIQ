@@ -2,6 +2,7 @@
 
 import copy
 import json
+import math
 import tempfile
 import unittest
 from datetime import timedelta
@@ -193,9 +194,55 @@ class NutritionTargetTests(unittest.TestCase):
         self.health.save('checkins', {'id': 'ill', 'date': self.day.isoformat(), 'illness': True})
         _, context, _, _ = context_for(self.health, self.snapshot, self.day)
         self.assertEqual(context['limits']['min_adjustment'], 0)
-        with patch('dashboard.nutrition_targets.request_text', return_value=self.output):
+        self.assertTrue(context['recovery_alert'])
+        reference_kcal = context['energy_reference']['total_kcal']
+        output = {**json.loads(self.output), 'energy_adjustment_pct': -0.08}
+        with patch('dashboard.nutrition_targets.request_text', return_value=json.dumps(output)):
             self.targets.refresh(self.day, force=True)
-        self.assertEqual(len(self.health.read()['plans']), before)
+        self.assertEqual(self.targets.status, 'ready')
+        plan = _active_plan(self.health.read(), self.day)
+        minimum = max(
+            context['limits']['min_target_kcal'],
+            context['energy_reference'].get('resting_kcal') or 0,
+            reference_kcal,
+        )
+        floor = math.ceil(minimum / 50) * 50
+        self.assertEqual(plan['target_kcal'], max(floor, round(reference_kcal / 50) * 50))
+        self.assertEqual(plan['requested_adjustment_pct'], -0.08)
+        self.assertEqual(plan['applied_adjustment_pct'], 0)
+        self.assertIn('limite vigente', plan['reason'])
+        self.assertIn('recuperação', plan['reason'])
+
+    def test_out_of_range_adjustment_is_clamped_and_recorded_not_rejected(self):
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        reference_kcal = context['energy_reference']['total_kcal']
+        upper = math.floor(reference_kcal * 1.10 / 50) * 50
+        output = {**json.loads(self.output), 'energy_adjustment_pct': 0.5}
+        with patch('dashboard.nutrition_targets.request_text', return_value=json.dumps(output)):
+            self.targets.refresh(self.day, force=True)
+        self.assertEqual(self.targets.status, 'ready')
+        plan = _active_plan(self.health.read(), self.day)
+        self.assertEqual(plan['target_kcal'], upper)
+        self.assertEqual(plan['requested_adjustment_pct'], 0.5)
+        self.assertEqual(plan['applied_adjustment_pct'], 0.10)
+        self.assertIn('limite vigente', plan['reason'])
+        self.assertIn('política do produto', plan['reason'])
+
+    def test_non_numeric_adjustment_still_preserves_the_previous_plan(self):
+        with patch('dashboard.nutrition_targets.request_text', return_value=self.output):
+            self.targets.refresh(self.day)
+        before = _active_plan(self.health.read(), self.day)['id']
+        for index, bad in enumerate(('"abc"', 'NaN', 'null', 'true')):
+            # A changed context bypasses the fingerprint reuse and reaches the AI.
+            self.snapshot['activities'].append(
+                {'id': f'bad-{index}', 'date': self.day.isoformat(), 'kind': 'run', 'duration_seconds': 60}
+            )
+            raw = self.output.replace('"energy_adjustment_pct": -0.1', f'"energy_adjustment_pct": {bad}')
+            with patch('dashboard.nutrition_targets.request_text', return_value=raw):
+                self.targets.refresh(self.day, force=True)
+            self.assertEqual(self.targets.status, 'error')
+            self.assertEqual(_active_plan(self.health.read(), self.day)['id'], before)
+            self.assertNotIn('requested_adjustment_pct', _active_plan(self.health.read(), self.day))
 
     def test_future_generation_and_invalid_preference_are_rejected(self):
         with patch('dashboard.nutrition_targets.request_text') as infer:

@@ -219,6 +219,7 @@ def context_for(health, snapshot, day, diary=None):
             'activity_factor': factor,
             'factor_inferred': inferred_factor,
         },
+        'recovery_alert': recovery_alert,
         'energy_reference': reference,
         'energy_reference_alternatives': (
             [model_reference]
@@ -325,8 +326,18 @@ class NutritionTargets:
             adjustment, protein_ratio = result.get('energy_adjustment_pct'), result.get('protein_g_per_kg')
             fat_fraction = result.get('fat_energy_fraction')
             limits = context['limits']
+            # An out-of-range adjustment is clamped and recorded, not rejected:
+            # the final kcal is already bounded by [lower, upper] below.
+            if (
+                isinstance(adjustment, bool)
+                or not isinstance(adjustment, (int, float))
+                or not math.isfinite(adjustment)
+            ):
+                raise ValueError('A IA sugeriu valores fora dos limites; a última meta foi preservada.')
+            requested_adjustment = float(adjustment)
+            adjustment = max(limits['min_adjustment'], min(limits['max_adjustment'], requested_adjustment))
+            adjustment_clamped = adjustment != requested_adjustment
             for value, low, high in (
-                (adjustment, limits['min_adjustment'], limits['max_adjustment']),
                 (protein_ratio, 1.4, 2.0),
                 (fat_fraction, 0.25, 0.30),
             ):
@@ -374,10 +385,22 @@ class NutritionTargets:
                 origin = 'Referência de gasto declarada no perfil'
             else:
                 origin = 'Referência de gasto estimada pelo perfil'
+            clamp_note = ''
+            if adjustment_clamped:
+                motivo = (
+                    'recuperação: check-in recente com fadiga, dor ou doença'
+                    if context.get('recovery_alert')
+                    else 'política do produto'
+                )
+                clamp_note = (
+                    f'A IA sugeriu {requested_adjustment * 100:+.1f}%; '
+                    f'o limite vigente ({motivo}) aplicou {adjustment * 100:+.1f}%. '
+                )
             reason = (
                 f'{origin}: {reference["total_kcal"]:.0f} kcal/dia. '
                 f'Meta: {kcal} kcal/dia (ajuste de {(kcal / reference["total_kcal"] - 1) * 100:+.1f}% sobre a referência). '
-                f'Proteína: {protein_ratio:g} g/kg; gordura: {fat_fraction * 100:g}% da energia; '
+                + clamp_note
+                + f'Proteína: {protein_ratio:g} g/kg; gordura: {fat_fraction * 100:g}% da energia; '
                 'carboidratos completam o restante. ' + explanation
             )
             fresh, _, fresh_fingerprint, _ = context_for(self.health, self.snapshot(), day, self._diary)
@@ -442,6 +465,9 @@ class NutritionTargets:
                 'nutrition_context': context,
                 'created_at': _stamp(),
             }
+            if adjustment_clamped:
+                plan['requested_adjustment_pct'] = requested_adjustment
+                plan['applied_adjustment_pct'] = adjustment
             self.health.save('plans', plan, fresh['revision'])
             self.status, self.message = 'ready', ''
         except Exception as error:
