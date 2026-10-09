@@ -64,13 +64,13 @@ Uma exclusão ou alteração pode reabrir a conferência do dia. Favoritos/recei
 
 A preferência `energy_method` determina a escolha de gasto por dia:
 
-- `auto` (padrão): total manual com cobertura completa; total completo da origem; modelo integral do perfil; fonte parcial/desconhecida quando o modelo estiver indisponível.
-- `wearable`: usa somente o total diário da origem, preservando cobertura parcial/desconhecida e ausência. Não preenche as lacunas com o modelo.
+- `auto` (padrão): total manual com cobertura completa; total completo da origem; para hoje ou datas futuras, a média dos últimos 14 dias completos do relógio (mínimo de 7) como projeção (`garmin_recent_mean`); modelo integral do perfil; fonte parcial/desconhecida quando o modelo estiver indisponível.
+- `wearable`: total diário completo da origem; a média recente do relógio como projeção em qualquer dia; a linha parcial por último. Não preenche as lacunas com o modelo.
 - `model`: usa somente a referência declarada/calculada do perfil. Entradas insuficientes deixam o gasto indisponível.
 
 As fontes são alternativas; um total manual não é parcela extra. Quando `auto` escolhe o modelo diante de um wearable parcial, o resultado identifica a origem `profile_model` ou `profile_declared`, `coverage_basis: modeled_full_day` e 24 horas modeladas. Horas observadas continuam ausentes no modelo. O wearable permanece nas alternativas com sua cobertura original, acompanhado da limitação explicada; seus valores não são completados nem somados ao modelo.
 
-O gasto diário Garmin vem de `data/daily_energy.json`, com componentes separados, cobertura e método. O total inclui a atividade/exercício já contabilizados pela origem; os componentes nunca são somados novamente ao total. Ver [IMPORTS.md](IMPORTS.md) para semântica, contratos e preservação de respostas parciais.
+O gasto diário Garmin vem de `data/daily_energy.json`, com componentes separados, cobertura e método. Quando a origem não declara cobertura, a leitura infere `complete` se a observação (`observed_at`) é posterior ao dia, `partial` com as horas decorridas se é do próprio dia, e mantém `unknown` sem observação; a inferência é marcada em `coverage_basis` e nunca sobrescreve uma cobertura explícita. A média recente (`wearable_recent_mean_14d_v1`) usa apenas dias completos da janela, exclui o próprio dia e é projeção — não permite déficit retrospectivo. O total inclui a atividade/exercício já contabilizados pela origem; os componentes nunca são somados novamente ao total. Ver [IMPORTS.md](IMPORTS.md) para semântica, contratos e preservação de respostas parciais.
 
 `personal_energy_mifflin_v1` usa o modelo codificado Mifflin-St Jeor para adultos com entradas suficientes:
 

@@ -21,6 +21,7 @@ from psycopg.types.json import Jsonb
 
 from dashboard.repository import operational_db, operational_lock, read_dataset
 from dashboard.settings import default_tz
+from dashboard.wearable_energy import recent_reference, with_inferred_coverage
 
 MODEL_VERSION = "personal_energy_mifflin_v1"
 POLICY_VERSION = "conservative_trend_v1"
@@ -591,10 +592,14 @@ def _provider_energy(snapshot, root):
         rows = read_dataset(root, "data/daily_energy.json", [])
     if isinstance(rows, dict):
         rows = rows.get("daily", [])
-    return rows if isinstance(rows, list) else []
+    if not isinstance(rows, list):
+        return []
+    # Rows stored before coverage inference keep their evidence; only missing
+    # or unknown coverage is backfilled from the recorded observation time.
+    return [with_inferred_coverage(row) if isinstance(row, dict) else row for row in rows]
 
 
-def _energy(state, snapshot, day, food, provider_rows):
+def _energy(state, snapshot, day, food, provider_rows, recent=None):
     profile = _profile_for_day(state, snapshot, day)
     preferences = _effective_values(state, "preferences", day)
     manual = [r for r in state["energy_records"] if r["date"] == day.isoformat()]
@@ -611,13 +616,32 @@ def _energy(state, snapshot, day, food, provider_rows):
     )
     method_choice = preferences.get("energy_method", "auto")
     possible_model = _model(profile, preferences, day)
+    today = _today(preferences)
+    recent_source = None
+    if recent is not None and method_choice != "model":
+        # The recent full-day mean projects an unmeasured day; it never joins
+        # the candidate rows and is excluded again below by `r is not source`.
+        recent_source = {
+            "source": "garmin_recent_mean",
+            "method": recent.get("method", "wearable_recent_mean_14d_v1"),
+            "total_kcal": recent["total_kcal"],
+            "resting_kcal": recent.get("resting_kcal"),
+            "coverage": "full",
+            "coverage_hours": 24,
+            "is_projection": True,
+            "assumptions": recent.get("assumptions", []),
+        }
     source, model = None, None
     if method_choice == "wearable":
-        source = next((r for r in providers if complete(r)), providers[0] if providers else None)
+        source = (
+            next((r for r in providers if complete(r)), None) or recent_source or (providers[0] if providers else None)
+        )
     elif method_choice == "model":
         model = possible_model
     else:
         source = next((r for r in manual if complete(r)), None) or next((r for r in providers if complete(r)), None)
+        if source is None and day >= today and recent_source is not None:
+            source = recent_source
         if source is None:
             model = possible_model
             if model is None:
@@ -629,12 +653,19 @@ def _energy(state, snapshot, day, food, provider_rows):
     hours = source.get("coverage_hours") if source else 24 if model else None
     if hours is not None and hours < 24:
         coverage = "partial"
-    projection = bool(source.get("is_projection", False)) if source else bool(model and day >= _today(preferences))
+    projection = bool(source.get("is_projection", False)) if source else bool(model and day >= today)
     expenditure_usable = total is not None and coverage == "full" and not projection
     usable = expenditure_usable and food["intake_kcal"] is not None
+    used_recent = source is not None and source is recent_source
     plan = _active_plan(state, day)
     target = plan.get("target_kcal") if plan else None
-    limitations = list(model.get("assumptions", [])) if model else []
+    limitations = (
+        list(model.get("assumptions", []))
+        if model
+        else list((recent or {}).get("assumptions", []))
+        if used_recent
+        else []
+    )
     if model and candidates:
         limitations.append(
             "Usado modelo integral do perfil. As fontes do relógio/manuais não foram completadas nem somadas; permanecem alternativas com sua cobertura original."
@@ -673,11 +704,13 @@ def _energy(state, snapshot, day, food, provider_rows):
         "energy_method": method_choice,
         "coverage_basis": "modeled_full_day"
         if model
+        else "wearable_recent_mean"
+        if used_recent
         else "source_declared_full"
         if coverage == "full"
         else "source_partial_or_unknown",
-        "modeled_hours": 24 if model else None,
-        "observed_hours": source.get("coverage_hours") if source else None,
+        "modeled_hours": 24 if model or used_recent else None,
+        "observed_hours": source.get("coverage_hours") if source and not used_recent else None,
         "deficit_kcal": round(total - food["intake_kcal"], 1) if usable else None,
         "balance_kcal": round(food["intake_kcal"] - total, 1) if usable else None,
         "planned_intake_kcal": target,
@@ -705,18 +738,24 @@ def _energy(state, snapshot, day, food, provider_rows):
     }
 
 
+def _weight_slope_kg_per_week(weights):
+    """Least-squares kg/week over dated weight points, or None without a usable slope."""
+    if len(weights) < 2:
+        return None
+    origin = _day(weights[0]["date"])
+    xs = [(_day(w["date"]) - origin).days for w in weights]
+    ys = [w["weight_kg"] for w in weights]
+    mean_x, mean_y = statistics.mean(xs), statistics.mean(ys)
+    denominator = sum((x - mean_x) ** 2 for x in xs)
+    if not denominator:
+        return None
+    return sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denominator * 7
+
+
 def _progress(state, snapshot, day, days):
     start = day - timedelta(days=days - 1)
     weights = [r for r in _weights(state, snapshot, day) if r["date"] >= start.isoformat()]
-    weekly = None
-    if len(weights) >= 2:
-        origin = _day(weights[0]["date"])
-        xs = [(_day(w["date"]) - origin).days for w in weights]
-        ys = [w["weight_kg"] for w in weights]
-        mean_x, mean_y = statistics.mean(xs), statistics.mean(ys)
-        denominator = sum((x - mean_x) ** 2 for x in xs)
-        if denominator:
-            weekly = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denominator * 7
+    weekly = _weight_slope_kg_per_week(weights)
     goal_progress = []
     for goal in _goals_for_day(state, day):
         metric = goal.get("target_metric")
@@ -1113,13 +1152,14 @@ class HealthStore:
         if not 1 <= days <= 90:
             raise ValueError("O período deve conter de 1 a 90 dias.")
         provider_rows = _provider_energy(snapshot, self.root)
+        recent = recent_reference(provider_rows, day)
         selected_days = [day - timedelta(days=offset) for offset in range(days - 1, -1, -1)]
         records = diary.read_many(selected_days)
         foods, series = [], []
         for selected in selected_days:
             food = _food(records[selected])
             foods.append(food["record"])
-            series.append(_energy(state, snapshot, selected, food, provider_rows))
+            series.append(_energy(state, snapshot, selected, food, provider_rows, recent))
         usable = [r for r in series if r["usable"]]
         policy = _policy(_effective_values(state, "preferences", day))
         summary = {
@@ -1133,6 +1173,7 @@ class HealthStore:
             "active_plan": _active_plan(state, day),
             "energy": series[-1],
             "series": series,
+            "expenditure_reference": recent,
             "coverage": {
                 "days": days,
                 "food_complete_days": sum(r["intake_kcal"] is not None for r in series),
