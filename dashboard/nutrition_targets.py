@@ -16,6 +16,7 @@ from dashboard.health import (
     _active_plan,
     _effective_values,
     _goals_for_day,
+    _known,
     _model,
     _policy,
     _primary_goal,
@@ -38,6 +39,12 @@ referência informado: -0.10 significa 10% abaixo. Respeite os limites do contex
 Proteína entre 1.4 e 2.0 g/kg. Preserve massa magra, endurance e recuperação.
 Quando o objetivo for perder gordura preservando massa magra, priorize proteína
 entre 1.8 e 2.0 g/kg; explique exceções, sem prometer maximizar retenção muscular.
+Com esse objetivo e sem alerta de recuperação, a meta deve ficar abaixo do gasto
+de referência dentro dos limites; manutenção ou superávit exigem justificativa
+explícita. Use percentual de gordura e massa magra quando presentes para
+orientar proteína e déficit; composição antiga deve aparecer como limitação.
+O alerta de recuperação vem do check-in mais recente da janela; quando ativo,
+o ajuste mínimo vigente é zero e o déficit não é permitido.
 Escolha fat_energy_fraction entre 0.25 e 0.30. Carboidratos serão a energia restante
 após proteína e gordura; não são uma necessidade medida. Considere modalidade,
 duração e demanda dos treinos de hoje no contexto do volume habitual: em dias
@@ -146,13 +153,36 @@ def context_for(health, snapshot, day, diary=None):
     checks = [
         row for row in state['checkins'] if (day - timedelta(days=2)).isoformat() <= row['date'] <= day.isoformat()
     ]
-    recovery_alert = any(
-        row.get('illness') is True
-        or any(isinstance(row.get(key), (int, float)) and row[key] >= 8 for key in ('fatigue', 'pain'))
-        for row in checks
+    # The most recent check-in is the current state: a fresh report supersedes
+    # an older bad one instead of letting it hold the floor until it ages out.
+    latest_check = max(
+        checks,
+        key=lambda row: (row['date'], str(row.get('created_at') or ''), str(row.get('id') or '')),
+        default=None,
+    )
+    recovery_alert = bool(
+        latest_check
+        and (
+            latest_check.get('illness') is True
+            or any(
+                isinstance(latest_check.get(key), (int, float)) and latest_check[key] >= 8
+                for key in ('fatigue', 'pain')
+            )
+        )
     )
     lower_adjustment = 0 if recovery_alert else -min(0.15, policy['max_planned_deficit_pct'])
     weights = _weights(state, snapshot, day)
+    composition = {}
+    composition_rows = [
+        row
+        for row in (*state['measurements'], *weights)
+        if row.get('date') and str(row['date'])[:10] <= day.isoformat()
+    ]
+    for row in sorted(composition_rows, key=lambda row: str(row['date'])[:10]):
+        found = [key for key in ('body_fat_pct', 'lean_mass_kg', 'waist_cm') if _known(row.get(key))]
+        if found:
+            composition.update({key: row[key] for key in found})
+            composition['reference_date'] = str(row['date'])[:10]
     calibration = {'status': 'unavailable'}
     if diary is not None and reference is not None:
         series = health._summary(state, day - timedelta(days=1), snapshot, diary, 28)[0]['series']
@@ -187,11 +217,12 @@ def context_for(health, snapshot, day, diary=None):
 
     context = {
         'method': METHOD,
-        'prompt_revision': 4,
+        'prompt_revision': 5,
         'date': day.isoformat(),
         'profile': {
             k: profile.get(k) for k in ('age', 'birth_date', 'sex', 'height_cm', 'weight_kg', 'weight_reference_date')
         },
+        'body_composition': composition or None,
         'goal': goal_context(goal) if goal else None,
         'active_goals': [goal_context(g) for g in _goals_for_day(state, day) if g.get('status') == 'active'],
         'activities_14_days': activities,
@@ -211,6 +242,7 @@ def context_for(health, snapshot, day, diary=None):
                 else 'Estimativa; não calibrada por ingestão e evolução do peso.'
             ),
             'outside_training_activity': 'Não medida.',
+            'body_composition': 'Medida mais recente registrada; se antiga, tratar como aproximada e declarar a idade como limitação.',
             'carbohydrates': 'Energia restante após proteína e gordura; validar com treino e recuperação.',
         },
         'activity_reference': {

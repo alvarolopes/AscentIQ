@@ -213,6 +213,29 @@ class NutritionTargetTests(unittest.TestCase):
         self.assertIn('limite vigente', plan['reason'])
         self.assertIn('recuperação', plan['reason'])
 
+    def test_latest_checkin_supersedes_older_recovery_alert(self):
+        self.health.save('checkins', {'id': 'bad', 'date': (self.day - timedelta(days=1)).isoformat(), 'fatigue': 9})
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertTrue(context['recovery_alert'])
+        self.assertEqual(context['limits']['min_adjustment'], 0)
+        self.health.save('checkins', {'id': 'ok', 'date': self.day.isoformat(), 'fatigue': 4})
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertFalse(context['recovery_alert'])
+        self.assertLess(context['limits']['min_adjustment'], 0)
+
+    def test_body_composition_reaches_ai_context_with_reference_date(self):
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertIsNone(context['body_composition'])
+        day = (self.day - timedelta(days=10)).isoformat()
+        self.health.save(
+            'measurements',
+            {'id': 'm', 'date': day, 'weight_kg': 80, 'body_fat_pct': 19.5, 'lean_mass_kg': 64.4},
+        )
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertEqual(context['body_composition']['body_fat_pct'], 19.5)
+        self.assertEqual(context['body_composition']['lean_mass_kg'], 64.4)
+        self.assertEqual(context['body_composition']['reference_date'], day)
+
     def test_out_of_range_adjustment_is_clamped_and_recorded_not_rejected(self):
         _, context, _, _ = context_for(self.health, self.snapshot, self.day)
         reference_kcal = context['energy_reference']['total_kcal']
@@ -342,7 +365,7 @@ class NutritionTargetTests(unittest.TestCase):
             self.assertEqual(reference['source'], 'garmin_recent_mean')
             self.assertEqual(reference['total_kcal'], expected)
             self.assertEqual(reference['days_used'], 10)
-            self.assertEqual(context['prompt_revision'], 4)
+            self.assertEqual(context['prompt_revision'], 5)
             self.assertEqual(context['energy_reference_alternatives'][0]['source'], 'profile_model')
             self.assertEqual(context['calibration']['status'], 'unavailable')
         plan = _active_plan(self.health.read(), self.day)
