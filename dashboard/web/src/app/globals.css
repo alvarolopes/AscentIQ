@@ -124,7 +124,7 @@
     @apply leading-relaxed;
   }
   a {
-    @apply text-sky-300;
+    @apply text-primary;
   }
   summary {
     @apply cursor-pointer;

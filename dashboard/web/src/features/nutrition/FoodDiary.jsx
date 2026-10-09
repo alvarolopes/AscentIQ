@@ -360,16 +360,18 @@ export default function FoodDiary({ initialDay }) {
             <p>consumo e metas</p>
           </div>
         </div>
-        <div className="filters">
-          <Label>
-            Dia
+        <div className="filters mb-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <Label htmlFor={`${fieldPrefix}-day`}>Dia</Label>
             <Input
+              id={`${fieldPrefix}-day`}
+              className="w-36"
               type="date"
               value={day}
               disabled={busy || editorOpen || reviewOpen}
               onChange={(e) => changeDay(e.target.value)}
             />
-          </Label>
+          </div>
           <Button
             type="button"
             variant="outline"

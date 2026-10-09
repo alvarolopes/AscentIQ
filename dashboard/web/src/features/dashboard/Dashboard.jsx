@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
   array,
   dayLabel,
@@ -52,24 +52,26 @@ const methodLabel = (value) =>
   methodNames[value] || (value ? 'Método informado pela fonte' : 'Sem método');
 function Section({ title, children, description }) {
   return (
-    <Card>
-      <CardHeader>
+    <Card className="gap-3 [--card-spacing:--spacing(5)]">
+      <CardHeader className="gap-2">
         <CardTitle>{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
-      <CardContent>{children}</CardContent>
+      <CardContent className="flex flex-col items-start gap-3 [&>h3]:m-0 [&>p]:m-0">
+        {children}
+      </CardContent>
     </Card>
   );
 }
 function SummaryCard({ title, value, note, onClick, action }) {
   return (
-    <Card>
-      <CardHeader>
+    <Card className="gap-3 [--card-spacing:--spacing(5)]">
+      <CardHeader className="gap-2">
         <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <div className="metric-value">{value}</div>
-        <p className="text-xs text-muted-foreground">{note}</p>
+        <div className="metric-value m-0">{value}</div>
+        <p className="m-0 text-xs text-muted-foreground">{note}</p>
         {onClick && (
           <Button variant="outline" onClick={onClick}>
             {action}
@@ -148,6 +150,7 @@ function EnergyEvidence({ energy }) {
 }
 
 export default function Dashboard({ data, onNavigate, onAssistant, initialDay }) {
+  const dayId = useId();
   const [day, setDay] = useState(initialDay || today()),
     model = usePersonal(day, 14);
   const foodQuery = useQuery({
@@ -196,19 +199,25 @@ export default function Dashboard({ data, onNavigate, onAssistant, initialDay })
   };
   const navigate = (tab) => onNavigate?.(tab, day);
   return (
-    <>
-      <section className="panel">
-        <div className="panel-heading">
+    <div className="flex flex-col gap-5 [&>.panel]:p-5! [&>*]:mb-0">
+      <section className="panel flex flex-col gap-4">
+        <div className="panel-heading mb-0">
           <div>
             <h2>Dashboard</h2>
             <p>Alimentação, treinos e recuperação</p>
           </div>
         </div>
-        <div className="filters">
-          <FieldLabel>
-            Dia
-            <Input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
-          </FieldLabel>
+        <div className="filters mb-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <FieldLabel htmlFor={dayId}>Dia</FieldLabel>
+            <Input
+              id={dayId}
+              className="w-36"
+              type="date"
+              value={day}
+              onChange={(e) => setDay(e.target.value)}
+            />
+          </div>
           <Button disabled={model.loading} onClick={() => model.load().catch(() => {})}>
             Atualizar
           </Button>
@@ -245,7 +254,7 @@ export default function Dashboard({ data, onNavigate, onAssistant, initialDay })
               Assistente
             </Button>
           </div>
-          <div className="split dashboard-summary">
+          <div className="split dashboard-summary gap-5!">
             <SummaryCard
               title="Alimentação"
               value={
@@ -362,6 +371,6 @@ export default function Dashboard({ data, onNavigate, onAssistant, initialDay })
           />
         </Modal>
       )}
-    </>
+    </div>
   );
 }

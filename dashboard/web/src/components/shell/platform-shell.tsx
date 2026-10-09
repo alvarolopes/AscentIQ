@@ -93,7 +93,7 @@ export default function PlatformShell({
             asChild
             key={item.id}
             variant={selected ? 'secondary' : 'ghost'}
-            className="justify-start gap-3"
+            className="justify-start gap-3 text-primary hover:text-primary"
           >
             <Link
               href={item.path}
