@@ -87,7 +87,7 @@ class DailyApiTests(test_dashboard.Fixture):
         url = '/api/daily-analysis/2026-09-30'
         self.assertEqual(self.client.get(url).status_code,401)
         self.login()
-        self.assertEqual(self.client.get('/api/daily-analysis/invalid').status_code,422)
+        self.assertEqual(self.client.get('/api/daily-analysis/invalid').status_code,400)
         self.save('training_history',[{'date':'2026-09-30','type':'Run','distance_km':8}])
         preview = self.client.get(url).json()
         body = {'fingerprint':preview['fingerprint'],'text':'Relatório importado para este treino.'}

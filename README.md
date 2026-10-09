@@ -99,6 +99,8 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
+Os tipos de `src/lib/api/generated/openapi.d.ts` são derivados de `dashboard/openapi.json`; ao alterar endpoints ou envelopes no backend, regenere com `python -m dashboard.openapi_export` na raiz e `npm run contracts` em `dashboard/web` (`npm run contracts:check` verifica se estão atualizados).
+
 Para desenvolvimento com o backend na mesma origem, configure `DEV_API_URL` com a URL interna da API e execute `npm run dev`. Em produção, `frontend` executa Next standalone como usuário sem privilégios e `web` é o gateway Nginx; somente o gateway publica a porta 8787. As consultas de saúde não são armazenadas em cache compartilhado. Os testes E2E usam um backend sintético isolado, sem escrever no diário real.
 
 Instruções de manutenção estão em [AGENTS.md](dashboard/web/AGENTS.md). O [plano e resultado da migração](docs/PLANO_MIGRACAO_NEXT_SHADCN.md) registra versões, validação, skills e rollback. Para instalar a PWA pelo IP da rede local, o navegador ainda exige HTTPS confiável; localhost permite a validação local do service worker.

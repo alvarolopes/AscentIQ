@@ -6,6 +6,6 @@ Backend Python is the source of truth. Preserve endpoints, same-origin cookies, 
 
 Keep full-width topbar; boxed max1440px content/sidebar; natural-height sidebar; account at top-right. Four main destinations: Dashboard, Workouts, Nutrition, Sleep. Titles inside boxes. Assistant is persistent/nonmodal; check-ins, goals, analyses and meals are modal. Lists10/15; aggregates use the complete period. Missing/zero/pending are distinct.
 
-Commands: npm ci; npm run lint; npm run typecheck; npm run check:styles; npm test; npm run build; npm run test:e2e. Use synthetic data for writing tests. Public repository must never contain personal health records, credentials, private screenshots, databases or exports.
+Commands: npm ci; npm run lint; npm run typecheck; npm run check:styles; npm test; npm run build; npm run test:e2e; npm run contracts; npm run contracts:check. Types in `src/lib/api/generated/` are generated from `dashboard/openapi.json` — change the backend, regenerate with `python -m dashboard.openapi_export` + `npm run contracts`, never edit them by hand. Use synthetic data for writing tests. Public repository must never contain personal health records, credentials, private screenshots, databases or exports.
 
 The migrated domain modules preserve working JavaScript business behavior; new infrastructure and shadcn primitives use strict TypeScript. Do not use ts-nocheck, broad any types or ignored build errors to hide problems. Isolate browser globals in effects/handlers; use accessible components and protect dirty/busy forms.

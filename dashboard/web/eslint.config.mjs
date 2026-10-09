@@ -17,5 +17,5 @@ export default defineConfig([
       'no-restricted-imports': ['error', { patterns: ['styled-components', '@emotion/*', 'styled-jsx', 'styled-jsx/*'] }],
     },
   },
-  globalIgnores(['.next/**', 'next-env.d.ts']),
+  globalIgnores(['.next/**', 'next-env.d.ts', 'src/lib/api/generated/**']),
 ]);

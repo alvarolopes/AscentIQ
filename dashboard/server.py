@@ -13,7 +13,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from dashboard.jobs import JobManager
@@ -65,6 +66,29 @@ class FoodRestore(BaseModel):
     revision: int | None = Field(default=None, ge=0)
 
 
+VALIDATION_MESSAGES = (("missing", "campo obrigatório"),
+    ("bool_type", "informe verdadeiro ou falso"), ("bool_parsing", "informe verdadeiro ou falso"),
+    ("is_instance_of", "valor inválido"), ("string_type", "informe um texto"),
+    ("int_type", "informe um número inteiro"), ("int_parsing", "informe um número inteiro"),
+    ("float_", "informe um número"), ("date_", "informe uma data válida no formato AAAA-MM-DD"),
+    ("list_type", "informe uma lista"), ("dict_type", "informe um objeto"),
+    ("literal_error", "valor não permitido"), ("greater_than_equal", "valor fora do limite permitido"),
+    ("less_than_equal", "valor fora do limite permitido"), ("string_too_long", "valor fora do limite permitido"),
+    ("string_too_short", "valor fora do limite permitido"))
+
+
+def validation_detail(error):
+    kind, context = error.get("type", ""), error.get("ctx") or {}
+    if kind == "value_error" and context.get("error") is not None:
+        message = str(context["error"])
+    else:
+        message = next((text for prefix, text in VALIDATION_MESSAGES if kind == prefix or kind.startswith(prefix)),
+                       "valor inválido")
+    message = message if message.endswith(".") else message + "."
+    field = ".".join(str(part) for part in error.get("loc", ()) if part != "body")
+    return f"{field}: {message}" if field else message
+
+
 def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
     runtime.mkdir(parents=True, exist_ok=True)
     auth_path = runtime / "auth.json"
@@ -104,8 +128,17 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
         app.state.nutrition_targets.close()
         manager.close()
 
-    app = FastAPI(title="AscentIQ Private Dashboard", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    openapi_route = os.environ.get("ASCENTIQ_OPENAPI", "false").lower() == "true"
+    app = FastAPI(title="AscentIQ Private Dashboard", lifespan=lifespan, docs_url=None, redoc_url=None,
+                  openapi_url="/api/openapi.json" if openapi_route else None)
     app.state.jobs = manager
+    public = {"/api/health", "/api/auth/login"} | ({"/api/openapi.json"} if openapi_route else set())
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, error: RequestValidationError):
+        errors = error.errors()
+        return JSONResponse({"detail": validation_detail(errors[0]) if errors else "valor inválido."},
+                            status_code=400)
 
     @app.middleware("http")
     async def protect(request: Request, call_next):
@@ -114,7 +147,7 @@ def create_app(runtime: Path = RUNTIME, root: Path = ROOT) -> FastAPI:
             origin = request.headers.get("origin")
             if request.headers.get("x-ascentiq-request") != "1" or (origin and urlsplit(origin).netloc != request.headers.get("host")):
                 return Response(status_code=403)
-        if path not in {"/api/health", "/api/auth/login"}:
+        if path not in public:
             token = request.cookies.get(COOKIE, "")
             with sessions() as conn:
                 row = conn.execute("SELECT expires FROM sessions WHERE digest=?", (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
