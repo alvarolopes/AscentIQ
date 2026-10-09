@@ -1,4 +1,5 @@
 """Reviewed food estimates, persisted independently of training reports."""
+
 import json
 import math
 import os
@@ -24,15 +25,22 @@ os alimentos e nutrientes já listados ou acrescentar explicações genéricas.
 Diferencie peso cru e pronto. Não invente
 rótulos exatos de marcas; identifique estimativas. Não prescreva metas ou dietas.'''
 
+
 def prompt(text):
     return INSTRUCTIONS + '\nALIMENTAÇÃO:\n' + text
+
 
 def validate(value, *, allow_unknown=False):
     if not isinstance(value, dict) or not isinstance(value.get('items'), list) or not 1 <= len(value['items']) <= 60:
         raise ValueError('A análise deve conter de 1 a 60 alimentos.')
     items = []
     for item in value['items']:
-        if not isinstance(item, dict) or not isinstance(item.get('name'), str) or not item['name'].strip() or len(item['name']) > 300:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get('name'), str)
+            or not item['name'].strip()
+            or len(item['name']) > 300
+        ):
             raise ValueError('Informe o nome e a quantidade de cada alimento.')
         row = {'name': item['name'].strip()}
         for key in FIELDS:
@@ -60,13 +68,17 @@ def validate(value, *, allow_unknown=False):
             result[key] = value[key]
     return result
 
+
 def estimate(text, image=None):
     if not configuration()['configured']:
         raise ValueError('A conexão com IA não está configurada. Copie o prompt e importe o JSON da análise.')
     content = text
     if image:
         import base64
-        if not isinstance(image, str) or not image.startswith(('data:image/jpeg;base64,', 'data:image/png;base64,', 'data:image/webp;base64,')):
+
+        if not isinstance(image, str) or not image.startswith(
+            ('data:image/jpeg;base64,', 'data:image/png;base64,', 'data:image/webp;base64,')
+        ):
             raise ValueError('Envie uma foto JPEG, PNG ou WebP.')
         try:
             raw = base64.b64decode(image.split(',', 1)[1], validate=True)
@@ -74,34 +86,77 @@ def estimate(text, image=None):
             raise ValueError('Imagem inválida.') from error
         if not 20 <= len(raw) <= 6 * 1024 * 1024:
             raise ValueError('A imagem deve ter até 6 MB.')
-        content = [{'role': 'user', 'content': [{'type': 'input_text', 'text': text +
-            '\nA foto não comprova peso nem ingredientes invisíveis; declare hipóteses.'},
-            {'type': 'input_image', 'image_url': image}]}]
+        content = [
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'type': 'input_text',
+                        'text': text + '\nA foto não comprova peso nem ingredientes invisíveis; declare hipóteses.',
+                    },
+                    {'type': 'input_image', 'image_url': image},
+                ],
+            }
+        ]
     if configuration()['provider'] == 'ollama':
         from dashboard.local_ai import request_text
-        schema = {'type': 'object', 'required': ['items', 'notes'], 'properties': {
-            'items': {'type': 'array', 'minItems': 1, 'maxItems': 60, 'items': {
-                'type': 'object', 'required': ['name', *FIELDS], 'properties': {
-                    'name': {'type': 'string'}, **{key: {'type': 'number', 'minimum': 0} for key in FIELDS}}}},
-            'notes': {'type': 'string'}}}
+
+        schema = {
+            'type': 'object',
+            'required': ['items', 'notes'],
+            'properties': {
+                'items': {
+                    'type': 'array',
+                    'minItems': 1,
+                    'maxItems': 60,
+                    'items': {
+                        'type': 'object',
+                        'required': ['name', *FIELDS],
+                        'properties': {
+                            'name': {'type': 'string'},
+                            **{key: {'type': 'number', 'minimum': 0} for key in FIELDS},
+                        },
+                    },
+                },
+                'notes': {'type': 'string'},
+            },
+        }
         output = request_text(INSTRUCTIONS, content, schema=schema)
         try:
             result = validate(json.loads(output))
         except (ValueError, TypeError) as error:
-            raise RuntimeError('A estimativa local ficou incompleta. Revise a descrição e tente novamente; a refeição foi preservada.') from error
+            raise RuntimeError(
+                'A estimativa local ficou incompleta. Revise a descrição e tente novamente; a refeição foi preservada.'
+            ) from error
         return {**result, 'source': 'ollama', 'model': configuration()['model']}
-    request = Request('https://api.openai.com/v1/responses', data=json.dumps({
-        'model': configuration()['model'], 'instructions': INSTRUCTIONS, 'input': content,
-        'store': False, 'max_output_tokens': 5000,
-        'text': {'format': {'type': 'json_object'}}}).encode(), headers={
-        'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json'})
+    request = Request(
+        'https://api.openai.com/v1/responses',
+        data=json.dumps(
+            {
+                'model': configuration()['model'],
+                'instructions': INSTRUCTIONS,
+                'input': content,
+                'store': False,
+                'max_output_tokens': 5000,
+                'text': {'format': {'type': 'json_object'}},
+            }
+        ).encode(),
+        headers={'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json'},
+    )
     try:
         with urlopen(request, timeout=45) as response:
             result = json.load(response)
         if result.get('status') != 'completed':
             raise ValueError()
-        output = ''.join(c.get('text', '') for i in result.get('output', []) if i.get('type') == 'message'
-                         for c in i.get('content', []) if c.get('type') == 'output_text')
+        output = ''.join(
+            c.get('text', '')
+            for i in result.get('output', [])
+            if i.get('type') == 'message'
+            for c in i.get('content', [])
+            if c.get('type') == 'output_text'
+        )
         return {**validate(json.loads(output)), 'source': 'openai', 'model': configuration()['model']}
     except Exception as error:
-        raise RuntimeError('Não foi possível obter uma estimativa válida da IA. Tente novamente ou importe a análise.') from error
+        raise RuntimeError(
+            'Não foi possível obter uma estimativa válida da IA. Tente novamente ou importe a análise.'
+        ) from error

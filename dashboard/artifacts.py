@@ -1,4 +1,5 @@
 """Private, versioned supporting records and allowlisted document storage."""
+
 from __future__ import annotations
 
 import base64
@@ -28,7 +29,9 @@ class Artifacts:
             raise ValueError('Pasta de documentos fora do ambiente privado.')
         if not postgres_enabled(root):
             with self._db() as conn:
-                conn.execute('CREATE TABLE IF NOT EXISTS personal_artifacts (id TEXT PRIMARY KEY,payload TEXT NOT NULL)')
+                conn.execute(
+                    'CREATE TABLE IF NOT EXISTS personal_artifacts (id TEXT PRIMARY KEY,payload TEXT NOT NULL)'
+                )
 
     def _db(self):
         return operational_db(self.runtime, 'artifacts', self.root)
@@ -58,11 +61,15 @@ class Artifacts:
             record['updated_at'] = stamp
             if previous:
                 revision_id = kind + ':history:' + uuid.uuid4().hex
-                conn.execute('INSERT INTO personal_artifacts(id,payload) VALUES(?,?)',
-                             (revision_id, json.dumps(previous, ensure_ascii=False, allow_nan=False)))
+                conn.execute(
+                    'INSERT INTO personal_artifacts(id,payload) VALUES(?,?)',
+                    (revision_id, json.dumps(previous, ensure_ascii=False, allow_nan=False)),
+                )
             records = [x for x in records if x['id'] != record['id']] + [record]
-            conn.execute('INSERT INTO personal_artifacts(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
-                         (kind, json.dumps(records, ensure_ascii=False, allow_nan=False)))
+            conn.execute(
+                'INSERT INTO personal_artifacts(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
+                (kind, json.dumps(records, ensure_ascii=False, allow_nan=False)),
+            )
         return record
 
     def remove(self, kind, record_id):
@@ -72,10 +79,14 @@ class Artifacts:
             records = json.loads(row[0]) if row else []
             removed = [x for x in records if x['id'] == record_id]
             if removed:
-                conn.execute('INSERT INTO personal_artifacts(id,payload) VALUES(?,?)',
-                             (kind + ':deleted:' + uuid.uuid4().hex, json.dumps(removed)))
-                conn.execute('UPDATE personal_artifacts SET payload=? WHERE id=?',
-                             (json.dumps([x for x in records if x['id'] != record_id]), kind))
+                conn.execute(
+                    'INSERT INTO personal_artifacts(id,payload) VALUES(?,?)',
+                    (kind + ':deleted:' + uuid.uuid4().hex, json.dumps(removed)),
+                )
+                conn.execute(
+                    'UPDATE personal_artifacts SET payload=? WHERE id=?',
+                    (json.dumps([x for x in records if x['id'] != record_id]), kind),
+                )
         return self.read(kind)
 
     def export(self):
@@ -101,9 +112,15 @@ class Artifacts:
         if suffix == '.pdf' and not raw.startswith(b'%PDF-'):
             raise ValueError('O arquivo não é um PDF válido.')
         if suffix in ('.png', '.jpg', '.jpeg', '.webp'):
-            valid = (suffix in ('.jpg', '.jpeg') and raw.startswith(b'\xff\xd8') or
-                     suffix == '.png' and raw.startswith(b'\x89PNG\r\n\x1a\n') or
-                     suffix == '.webp' and raw.startswith(b'RIFF') and raw[8:12] == b'WEBP')
+            valid = (
+                suffix in ('.jpg', '.jpeg')
+                and raw.startswith(b'\xff\xd8')
+                or suffix == '.png'
+                and raw.startswith(b'\x89PNG\r\n\x1a\n')
+                or suffix == '.webp'
+                and raw.startswith(b'RIFF')
+                and raw[8:12] == b'WEBP'
+            )
             if not valid:
                 raise ValueError('O conteúdo não corresponde ao formato da imagem.')
         digest = hashlib.sha256(raw).hexdigest()
@@ -113,18 +130,22 @@ class Artifacts:
             text = raw.decode('utf-8-sig')
         elif suffix == '.pdf':
             from pypdf import PdfReader
+
             try:
                 reader = PdfReader(io.BytesIO(raw))
                 if reader.is_encrypted:
                     raise ValueError('Envie um PDF sem senha.')
                 if len(reader.pages) > 100:
                     raise ValueError('Use documentos com até 100 páginas.')
-                text = '\n'.join(f'Página {i + 1}:\n' + (page.extract_text() or '')
-                                 for i, page in enumerate(reader.pages))
+                text = '\n'.join(
+                    f'Página {i + 1}:\n' + (page.extract_text() or '') for i, page in enumerate(reader.pages)
+                )
             except ValueError:
                 raise
             except Exception as error:
-                raise ValueError('Não foi possível ler o PDF. Envie um arquivo válido ou registre uma referência em texto.') from error
+                raise ValueError(
+                    'Não foi possível ler o PDF. Envie um arquivo válido ou registre uma referência em texto.'
+                ) from error
         # Parse and validate first. A rejected upload must not leave private
         # orphan files, and concurrent writes must not share a temporary name.
         if path.is_symlink():
@@ -146,14 +167,32 @@ class Artifacts:
         previous = next((x for x in self.read('documents') if x.get('sha256') == digest), None)
         if previous:
             return previous
-        return self.save('documents', {'id': digest, 'sha256': digest, 'filename': Path(filename.replace('\\', '/')).name,
-            'stored_name': path.name, 'label': str(label or filename)[:200], 'date': day,
-            'bytes': len(raw), 'text': text[:120000], 'observations': [], 'reviewed': False,
-            'source': 'uploaded', 'extraction': 'local_text' if text else 'not_extracted'}, if_absent=True)
+        return self.save(
+            'documents',
+            {
+                'id': digest,
+                'sha256': digest,
+                'filename': Path(filename.replace('\\', '/')).name,
+                'stored_name': path.name,
+                'label': str(label or filename)[:200],
+                'date': day,
+                'bytes': len(raw),
+                'text': text[:120000],
+                'observations': [],
+                'reviewed': False,
+                'source': 'uploaded',
+                'extraction': 'local_text' if text else 'not_extracted',
+            },
+            if_absent=True,
+        )
 
     def document_path(self, document_id):
         record = next((x for x in self.read('documents') if x['id'] == document_id), None)
         if record is None:
             return None
         path = self.folder / record['stored_name']
-        return path if path.is_file() and not path.is_symlink() and path.resolve().parent == self.folder.resolve() else None
+        return (
+            path
+            if path.is_file() and not path.is_symlink() and path.resolve().parent == self.folder.resolve()
+            else None
+        )

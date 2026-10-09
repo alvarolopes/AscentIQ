@@ -85,9 +85,7 @@ class IncrementalSyncTests(unittest.TestCase):
                 return [{"id": "remaining"}], 1
 
         client = FakeClient()
-        workouts, _, _ = client.get_incremental_workouts(
-            [{"id": "removed"}, {"id": "remaining"}], 1
-        )
+        workouts, _, _ = client.get_incremental_workouts([{"id": "removed"}, {"id": "remaining"}], 1)
         self.assertTrue(client.full_called)
         self.assertEqual(workouts, [{"id": "remaining"}])
 

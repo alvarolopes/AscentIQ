@@ -1,4 +1,5 @@
 """Automatic daily goals use dated synthetic inputs and no external providers."""
+
 import json
 import os
 import tempfile
@@ -15,21 +16,53 @@ class NutritionTargetTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.env = patch.dict(os.environ, {'DATABASE_BACKEND': 'json', 'ASCENTIQ_AI_PROVIDER': 'ollama',
-                              'ASCENTIQ_AI_ENABLED': 'true', 'OLLAMA_MODEL': 'qwen3.5:4b'})
+        self.env = patch.dict(
+            os.environ,
+            {
+                'DATABASE_BACKEND': 'json',
+                'ASCENTIQ_AI_PROVIDER': 'ollama',
+                'ASCENTIQ_AI_ENABLED': 'true',
+                'OLLAMA_MODEL': 'qwen3.5:4b',
+            },
+        )
         self.env.start()
         self.health = HealthStore(self.root / 'runtime', self.root)
         self.day = _today()
         self.health.update('profile', {'age': 43, 'sex': 'male', 'height_cm': 180, 'weight_kg': 80})
-        self.health.save('goals', {'id': 'synthetic-goal', 'type': 'fat_loss', 'status': 'active',
-                         'description': 'Reduzir gordura preservando endurance', 'priority': 1})
-        self.snapshot: dict = {'activities': [{'id': 'a', 'date': self.day.isoformat(), 'kind': 'run',
-                         'duration_seconds': 3600, 'distance_km': 10, 'elevation_gain_m': 100}],
-                         'medical': {'records': ['private medical fixture']}, 'gpx': 'private geometry fixture'}
+        self.health.save(
+            'goals',
+            {
+                'id': 'synthetic-goal',
+                'type': 'fat_loss',
+                'status': 'active',
+                'description': 'Reduzir gordura preservando endurance',
+                'priority': 1,
+            },
+        )
+        self.snapshot: dict = {
+            'activities': [
+                {
+                    'id': 'a',
+                    'date': self.day.isoformat(),
+                    'kind': 'run',
+                    'duration_seconds': 3600,
+                    'distance_km': 10,
+                    'elevation_gain_m': 100,
+                }
+            ],
+            'medical': {'records': ['private medical fixture']},
+            'gpx': 'private geometry fixture',
+        }
         self.targets = NutritionTargets(self.health, lambda: self.snapshot)
-        self.output = json.dumps({'energy_adjustment_pct': -0.1, 'protein_g_per_kg': 1.8,
-                                 'fat_energy_fraction': 0.30,
-                                 'reason': 'Estimativa sintética para o objetivo e treino.', 'limitations': ['Referência estimada.']})
+        self.output = json.dumps(
+            {
+                'energy_adjustment_pct': -0.1,
+                'protein_g_per_kg': 1.8,
+                'fat_energy_fraction': 0.30,
+                'reason': 'Estimativa sintética para o objetivo e treino.',
+                'limitations': ['Referência estimada.'],
+            }
+        )
 
     def tearDown(self):
         self.env.stop()
@@ -42,7 +75,9 @@ class NutritionTargetTests(unittest.TestCase):
             self.assertEqual(first['status'], 'ready')
             self.assertEqual(first['protein_g'], 144)
             self.assertGreater(first['kcal'], 1700)
-            self.assertAlmostEqual(first['kcal'], first['protein_g'] * 4 + first['carbs_g'] * 4 + first['fat_g'] * 9, delta=2)
+            self.assertAlmostEqual(
+                first['kcal'], first['protein_g'] * 4 + first['carbs_g'] * 4 + first['fat_g'] * 9, delta=2
+            )
             context = json.loads(infer.call_args.args[1])
             self.assertEqual(context['profile']['weight_kg'], 80)
             self.assertEqual(context['goal']['id'], 'synthetic-goal')
@@ -97,9 +132,14 @@ class NutritionTargetTests(unittest.TestCase):
         with patch('dashboard.nutrition_targets.request_text', return_value=self.output):
             self.targets.refresh(self.day)
         before = self.targets.view(self.day)
-        self.snapshot['activities'].append({'id': 'b', 'date': self.day.isoformat(), 'kind': 'strength', 'duration_seconds': 1800})
-        for output in ('{}', '{"energy_adjustment_pct":-0.8,"protein_g_per_kg":1.8}',
-                       '{"energy_adjustment_pct":true,"protein_g_per_kg":1.8}'):
+        self.snapshot['activities'].append(
+            {'id': 'b', 'date': self.day.isoformat(), 'kind': 'strength', 'duration_seconds': 1800}
+        )
+        for output in (
+            '{}',
+            '{"energy_adjustment_pct":-0.8,"protein_g_per_kg":1.8}',
+            '{"energy_adjustment_pct":true,"protein_g_per_kg":1.8}',
+        ):
             with patch('dashboard.nutrition_targets.request_text', return_value=output):
                 self.targets.refresh(self.day, force=True)
             self.assertEqual(self.targets.view(self.day)['kcal'], before['kcal'])
@@ -110,9 +150,11 @@ class NutritionTargetTests(unittest.TestCase):
 
     def test_concurrent_profile_change_cancels_publication_and_alert_blocks_deficit(self):
         before = len(self.health.read()['plans'])
+
         def changed(*args, **kwargs):
             self.health.update('profile', {'height_cm': 185})
             return self.output
+
         with patch('dashboard.nutrition_targets.request_text', side_effect=changed):
             self.targets.refresh(self.day)
         self.assertEqual(len(self.health.read()['plans']), before)
@@ -134,10 +176,13 @@ class NutritionTargetTests(unittest.TestCase):
 
     def test_activity_change_during_inference_cancels_stale_publication(self):
         before = len(self.health.read()['plans'])
+
         def changed(*args, **kwargs):
-            self.snapshot['activities'].append({'id': 'late-import', 'date': self.day.isoformat(),
-                                               'kind': 'running', 'duration_seconds': 7200})
+            self.snapshot['activities'].append(
+                {'id': 'late-import', 'date': self.day.isoformat(), 'kind': 'running', 'duration_seconds': 7200}
+            )
             return self.output
+
         with patch('dashboard.nutrition_targets.request_text', side_effect=changed):
             self.targets.refresh(self.day)
         self.assertEqual(len(self.health.read()['plans']), before)
@@ -145,8 +190,16 @@ class NutritionTargetTests(unittest.TestCase):
 
     def test_daily_publication_preserves_an_existing_future_plan(self):
         tomorrow = self.day + timedelta(days=1)
-        self.health.save('plans', {'id': 'future-plan', 'goal_id': 'synthetic-goal',
-                         'target_kcal': 2400, 'protein_g': 150, 'effective_from': tomorrow.isoformat()})
+        self.health.save(
+            'plans',
+            {
+                'id': 'future-plan',
+                'goal_id': 'synthetic-goal',
+                'target_kcal': 2400,
+                'protein_g': 150,
+                'effective_from': tomorrow.isoformat(),
+            },
+        )
         with patch('dashboard.nutrition_targets.request_text', return_value=self.output):
             self.targets.refresh(self.day)
         self.assertEqual(self.targets.view(self.day)['status'], 'ready')
@@ -167,10 +220,14 @@ class NutritionTargetTests(unittest.TestCase):
 
     def test_weight_context_excludes_future_and_old_measurements(self):
         for identifier, offset, weight in (('old', -35, 83), ('recent', -7, 81), ('future', 1, 79)):
-            self.health.save('measurements', {'id': identifier, 'date': (self.day + timedelta(days=offset)).isoformat(),
-                                             'weight_kg': weight})
+            self.health.save(
+                'measurements',
+                {'id': identifier, 'date': (self.day + timedelta(days=offset)).isoformat(), 'weight_kg': weight},
+            )
         _, context, _, _ = context_for(self.health, self.snapshot, self.day)
-        self.assertEqual(context['weight_history_30_days'], [{'date': (self.day - timedelta(days=7)).isoformat(), 'weight_kg': 81}])
+        self.assertEqual(
+            context['weight_history_30_days'], [{'date': (self.day - timedelta(days=7)).isoformat(), 'weight_kg': 81}]
+        )
 
     def test_unverified_clinical_claim_is_omitted_but_valid_targets_are_published(self):
         output = {**json.loads(self.output), 'reason': 'A distribuição garante estabilidade hormonal.'}

@@ -26,9 +26,11 @@ def process_lock(path: Path):
     try:
         if os.name == "nt":
             import msvcrt
+
             msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
         else:
             import fcntl
+
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # fcntl só existe em POSIX; o branch é os.name != "nt"
         yield
     finally:
@@ -57,10 +59,14 @@ class JobManager:
         self.stop = threading.Event()
         self.thread: threading.Thread | None = None
         with self.db() as conn:
-            conn.execute("CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, mode TEXT, status TEXT, created_at TEXT, finished_at TEXT, message TEXT, warnings TEXT, schedule_key TEXT UNIQUE)")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, mode TEXT, status TEXT, created_at TEXT, finished_at TEXT, message TEXT, warnings TEXT, schedule_key TEXT UNIQUE)"
+            )
             conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
             if recover_interrupted:
-                conn.execute("UPDATE jobs SET status='failed', message='Processo interrompido; execute novamente.' WHERE status='running'")
+                conn.execute(
+                    "UPDATE jobs SET status='failed', message='Processo interrompido; execute novamente.' WHERE status='running'"
+                )
             slot = schedule_slot(datetime.now(TZ)).isoformat()
             conn.execute("INSERT OR IGNORE INTO settings VALUES ('scheduled_slot', ?)", (slot,))
 
@@ -82,17 +88,30 @@ class JobManager:
             if active:
                 raise RuntimeError("Uma atualização já está em andamento.")
             job_id = datetime.now(TZ).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
-            conn.execute("INSERT INTO jobs VALUES (?, ?, 'queued', ?, NULL, 'Aguardando execução', '[]', ?)", (job_id, mode, now(), schedule_key))
+            conn.execute(
+                "INSERT INTO jobs VALUES (?, ?, 'queued', ?, NULL, 'Aguardando execução', '[]', ?)",
+                (job_id, mode, now(), schedule_key),
+            )
             return job_id
 
     def update(self, job_id: str, status: str, message: str, warnings: builtins.list | None = None):
         with self.db() as conn:
-            conn.execute("UPDATE jobs SET status=?, message=?, warnings=?, finished_at=? WHERE id=?",
-                         (status, message, json.dumps(warnings or [], ensure_ascii=False), now() if status in {"completed", "partial", "failed"} else None, job_id))
+            conn.execute(
+                "UPDATE jobs SET status=?, message=?, warnings=?, finished_at=? WHERE id=?",
+                (
+                    status,
+                    message,
+                    json.dumps(warnings or [], ensure_ascii=False),
+                    now() if status in {"completed", "partial", "failed"} else None,
+                    job_id,
+                ),
+            )
 
     def process(self, job: dict):
         with self.db() as conn:
-            claimed = conn.execute("UPDATE jobs SET status='running' WHERE id=? AND status='queued' RETURNING id",(job["id"],)).fetchone()
+            claimed = conn.execute(
+                "UPDATE jobs SET status='running' WHERE id=? AND status='queued' RETURNING id", (job["id"],)
+            ).fetchone()
         if not claimed:
             return
         try:
@@ -101,19 +120,40 @@ class JobManager:
                 progress("Preparando dados")
                 if postgres_enabled(self.root):
                     from dashboard.database_pipeline import run_database_pipeline
+
                     warnings = run_database_pipeline(job, self.root, self.runtime, progress)
-                    self.update(job["id"], "partial" if warnings else "completed", "Relatorio publicado" if not warnings else "Relatorio publicado com fontes parciais", warnings)
+                    self.update(
+                        job["id"],
+                        "partial" if warnings else "completed",
+                        "Relatorio publicado" if not warnings else "Relatorio publicado com fontes parciais",
+                        warnings,
+                    )
                     return
-                sources = ("garmin",) if job["mode"] == "sync-garmin" else ("hevy",) if job["mode"] == "sync-hevy" else ("garmin", "hevy")
+                sources = (
+                    ("garmin",)
+                    if job["mode"] == "sync-garmin"
+                    else ("hevy",)
+                    if job["mode"] == "sync-hevy"
+                    else ("garmin", "hevy")
+                )
                 warnings = sync_sources(self.root, progress, sources) if job["mode"] != "generate" else []
                 rebuild(self.root, progress)
                 snapshot = build_snapshot(self.root)
                 snapshot["sync_warnings"] = warnings
                 progress("Gerando e validando PDF Typst")
                 publish_report(snapshot, job["id"], self.runtime, self.root)
-                self.update(job["id"], "partial" if warnings else "completed", "Relatório publicado" if not warnings else "Relatório publicado com fontes parciais", warnings)
+                self.update(
+                    job["id"],
+                    "partial" if warnings else "completed",
+                    "Relatório publicado" if not warnings else "Relatório publicado com fontes parciais",
+                    warnings,
+                )
         except Exception as error:
-            message = str(error) if isinstance(error, RuntimeError) else "Falha ao gerar o relatório; a versão anterior foi preservada."
+            message = (
+                str(error)
+                if isinstance(error, RuntimeError)
+                else "Falha ao gerar o relatório; a versão anterior foi preservada."
+            )
             self.update(job["id"], "failed", message)
 
     def tick_schedule(self, current: datetime):
@@ -125,7 +165,7 @@ class JobManager:
         if slot > previous:
             try:
                 self.enqueue("sync", schedule_key=slot)
-            except (RuntimeError, sqlite3.IntegrityError):
+            except RuntimeError, sqlite3.IntegrityError:
                 return
             with self.db() as conn:
                 conn.execute("UPDATE settings SET value=? WHERE key='scheduled_slot'", (slot,))
@@ -135,7 +175,12 @@ class JobManager:
             return
         prefix = 'daily-sleep:' + sleep_schedule_slot(current).date().isoformat() + ':'
         with self.db() as conn:
-            attempts = [dict(row) for row in conn.execute("SELECT * FROM jobs WHERE schedule_key LIKE ? ORDER BY created_at DESC", (prefix + '%',))]
+            attempts = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM jobs WHERE schedule_key LIKE ? ORDER BY created_at DESC", (prefix + '%',)
+                )
+            ]
         if any(job['status'] in ('completed', 'queued', 'running') for job in attempts) or len(attempts) >= 3:
             return
         if attempts:
@@ -144,7 +189,7 @@ class JobManager:
                 return
         try:
             self.enqueue('sync-garmin', schedule_key=prefix + str(len(attempts) + 1))
-        except (RuntimeError, sqlite3.IntegrityError):
+        except RuntimeError, sqlite3.IntegrityError:
             return
 
     def loop(self):
@@ -158,7 +203,9 @@ class JobManager:
             self.stop.wait(2)
 
     def start(self):
-        if not (self.runtime / "latest.json").exists() and not any(x["status"] in {"queued", "running"} for x in self.list()):
+        if not (self.runtime / "latest.json").exists() and not any(
+            x["status"] in {"queued", "running"} for x in self.list()
+        ):
             self.enqueue("generate")
         self.thread = threading.Thread(target=self.loop, name="athlete-jobs", daemon=True)
         self.thread.start()

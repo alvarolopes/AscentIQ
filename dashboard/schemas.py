@@ -1,4 +1,5 @@
 """Typed request envelopes; domain dicts keep flowing to existing validators."""
+
 from __future__ import annotations
 
 from datetime import date

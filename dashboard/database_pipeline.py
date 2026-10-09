@@ -1,4 +1,5 @@
 """Run unchanged calculators in an isolated workspace, then commit one revision."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +15,7 @@ from dashboard.snapshot import TZ, build_snapshot
 
 def backup_if_due(root, runtime, progress):
     from dashboard.backup import create_backup
+
     output = runtime.parent / "backups"
     latest = output / "latest.json"
     previous = json.loads(latest.read_text()) if latest.exists() else {}
@@ -23,15 +25,16 @@ def backup_if_due(root, runtime, progress):
     progress("Verificando backup criptografado")
     result = create_backup(root, output, database=True)
     result["local_date"] = today
-    latest.write_text(json.dumps(result),encoding="utf-8")
+    latest.write_text(json.dumps(result), encoding="utf-8")
 
 
 def run_database_pipeline(job, root, runtime, progress=lambda _: None, replacements=None):
     from dashboard.repository import LOCK_ID
+
     repo = PostgresRepository()
     # Session lock covers work outside the final SQL transaction, including CLI jobs.
     with connect(autocommit=True) as guard:
-        if not guard.execute("SELECT pg_try_advisory_lock(%s)",(LOCK_ID+2,)).fetchone()[0]:
+        if not guard.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_ID + 2,)).fetchone()[0]:
             raise RuntimeError("Uma atualizacao ja esta em andamento.")
         try:
             workspaces = runtime / "workspaces"
@@ -41,22 +44,35 @@ def run_database_pipeline(job, root, runtime, progress=lambda _: None, replaceme
                 revision = repo.export(stage)
                 for path, raw in (replacements or {}).items():
                     from dashboard.repository import validate_path
+
                     validate_path(path)
                     json.loads(raw.decode("utf-8-sig"))
                     target = stage / path
-                    target.parent.mkdir(parents=True,exist_ok=True)
+                    target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(raw)
-                shutil.copytree(root / "scripts",stage / "scripts",ignore=shutil.ignore_patterns("__pycache__"))
-                shutil.copytree(root / "dashboard" / "templates",stage / "dashboard" / "templates")
-                sources = ("garmin",) if job["mode"] == "sync-garmin" else ("hevy",) if job["mode"] == "sync-hevy" else ("garmin","hevy")
+                shutil.copytree(root / "scripts", stage / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+                shutil.copytree(root / "dashboard" / "templates", stage / "dashboard" / "templates")
+                sources = (
+                    ("garmin",)
+                    if job["mode"] == "sync-garmin"
+                    else ("hevy",)
+                    if job["mode"] == "sync-hevy"
+                    else ("garmin", "hevy")
+                )
                 try:
-                    warnings = sync_sources(stage,progress,sources) if job["mode"] != "generate" else []
+                    warnings = sync_sources(stage, progress, sources) if job["mode"] != "generate" else []
                 finally:
                     # Keep responses even if a later calculation, PDF or transaction fails.
                     for source in ("garmin_mcp_exports", "hevy_api_exports"):
                         for path in (stage / "data" / source).rglob("*"):
                             if path.is_file():
-                                target = runtime / "provider_exports" / source / job["id"] / path.relative_to(stage / "data" / source)
+                                target = (
+                                    runtime
+                                    / "provider_exports"
+                                    / source
+                                    / job["id"]
+                                    / path.relative_to(stage / "data" / source)
+                                )
                                 target.parent.mkdir(parents=True, exist_ok=True)
                                 shutil.copyfile(path, target)
                     sleep = stage / "data" / "garmin_sleep_reference_2026_04.json"
@@ -65,42 +81,58 @@ def run_database_pipeline(job, root, runtime, progress=lambda _: None, replaceme
                         target.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copyfile(sleep, target)
                 progress("Recalculando a mesma versao do modelo")
-                rebuild(stage,progress)
+                rebuild(stage, progress)
                 snapshot = build_snapshot(stage)
                 snapshot["sync_warnings"] = warnings
                 files = read_files(stage)
                 progress("Gerando relatorios antes da publicacao")
-                report = publish_report(snapshot,job["id"],runtime,stage,activate=False)
+                report = publish_report(snapshot, job["id"], runtime, stage, activate=False)
                 progress("Publicando revisao transacional no PostgreSQL")
                 # No active data or report pointer changes if SQL validation fails.
-                published_revision = repo.publish(files,reason=job.get("reason",job["mode"]),expected=revision,warnings=warnings,snapshot=snapshot,report=report,documents=document_manifest(root))
+                published_revision = repo.publish(
+                    files,
+                    reason=job.get("reason", job["mode"]),
+                    expected=revision,
+                    warnings=warnings,
+                    snapshot=snapshot,
+                    report=report,
+                    documents=document_manifest(root),
+                )
                 latest = runtime / "latest.tmp"
-                latest.write_text(json.dumps({"id":job["id"]}),encoding="utf-8")
+                latest.write_text(json.dumps({"id": job["id"]}), encoding="utf-8")
                 latest.replace(runtime / "latest.json")
                 # Provider responses are archived locally; credentials are never copied.
                 try:
-                    for source in ("garmin_mcp_exports","hevy_api_exports"):
+                    for source in ("garmin_mcp_exports", "hevy_api_exports"):
                         directory = stage / "data" / source
                         for path in directory.rglob("*"):
                             if path.is_file():
                                 target = runtime / "provider_exports" / source / job["id"] / path.relative_to(directory)
-                                target.parent.mkdir(parents=True,exist_ok=True)
-                                shutil.copyfile(path,target)
+                                target.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copyfile(path, target)
                     for path in (stage / "analysis").rglob("*"):
                         if path.is_file() and path.suffix in {".md", ".svg"}:
                             target = root / path.relative_to(stage)
-                            target.parent.mkdir(parents=True,exist_ok=True)
-                            shutil.copyfile(path,target)
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copyfile(path, target)
                 except OSError as exc:
-                    warnings.append(f"Treinos publicados; copia auxiliar falhou ({Path(exc.filename or 'desconhecido').name}, errno {exc.errno}).")
+                    warnings.append(
+                        f"Treinos publicados; copia auxiliar falhou ({Path(exc.filename or 'desconhecido').name}, errno {exc.errno})."
+                    )
                 try:
-                    backup_if_due(root,runtime,progress)
+                    backup_if_due(root, runtime, progress)
                 except Exception:
-                    warnings.append("Treinos publicados; backup automatico nao concluido. Preserve o backup anterior e tente novamente.")
+                    warnings.append(
+                        "Treinos publicados; backup automatico nao concluido. Preserve o backup anterior e tente novamente."
+                    )
                 if warnings:
                     from psycopg.types.json import Jsonb
+
                     with connect() as conn:
-                        conn.execute("UPDATE athlete.revisions SET warnings=%s WHERE id=%s",(Jsonb(warnings),published_revision))
+                        conn.execute(
+                            "UPDATE athlete.revisions SET warnings=%s WHERE id=%s",
+                            (Jsonb(warnings), published_revision),
+                        )
                 return warnings
         finally:
-            guard.execute("SELECT pg_advisory_unlock(%s)",(LOCK_ID+2,))
+            guard.execute("SELECT pg_advisory_unlock(%s)", (LOCK_ID + 2,))

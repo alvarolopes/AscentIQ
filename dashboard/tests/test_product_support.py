@@ -28,8 +28,15 @@ class ProductSupportTests(unittest.TestCase):
     def test_legacy_diary_pending_complete_and_recovery(self):
         legacy = self.runtime / 'food-diary'
         legacy.mkdir()
-        original = [{'id': 'legacy', 'text': 'A meal', 'analysis': validate({'items': [
-            {'name': 'Synthetic food', 'kcal': 500, 'protein_g': 25, 'carbs_g': 60, 'fat_g': 15}]})}]
+        original = [
+            {
+                'id': 'legacy',
+                'text': 'A meal',
+                'analysis': validate(
+                    {'items': [{'name': 'Synthetic food', 'kcal': 500, 'protein_g': 25, 'carbs_g': 60, 'fat_g': 15}]}
+                ),
+            }
+        ]
         (legacy / '2026-10-01.json').write_text(json.dumps(original))
         diary = FoodDiary(self.runtime, self.root)
         self.assertEqual(diary.read(self.day)['totals']['kcal'], 500)
@@ -46,13 +53,28 @@ class ProductSupportTests(unittest.TestCase):
         diary = FoodDiary(self.runtime, self.root)
         days = [self.day - timedelta(days=offset) for offset in range(14)]
         for selected in days[:3]:
-            diary.change(selected, entry={'id': 'meal-' + selected.isoformat(), 'text': 'Synthetic',
-                                          'analysis': {'items': [{'name': 'Food', 'kcal': 400,
-                                                                  'protein_g': 20, 'carbs_g': 50, 'fat_g': 10}]}})
+            diary.change(
+                selected,
+                entry={
+                    'id': 'meal-' + selected.isoformat(),
+                    'text': 'Synthetic',
+                    'analysis': {'items': [{'name': 'Food', 'kcal': 400, 'protein_g': 20, 'carbs_g': 50, 'fat_g': 10}]},
+                },
+            )
         legacy = self.runtime / 'food-diary'
-        (legacy / (days[5].isoformat() + '.json')).write_text(json.dumps([
-            {'id': 'legacy', 'text': 'Legacy meal', 'analysis': {'items': [
-                {'name': 'Food', 'kcal': 300, 'protein_g': 15, 'carbs_g': 40, 'fat_g': 8}]}}]))
+        (legacy / (days[5].isoformat() + '.json')).write_text(
+            json.dumps(
+                [
+                    {
+                        'id': 'legacy',
+                        'text': 'Legacy meal',
+                        'analysis': {
+                            'items': [{'name': 'Food', 'kcal': 300, 'protein_g': 15, 'carbs_g': 40, 'fat_g': 8}]
+                        },
+                    }
+                ]
+            )
+        )
         expected = {selected: diary.read(selected) for selected in days}
         original_db = diary._db
         counters = []

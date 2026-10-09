@@ -2,6 +2,7 @@
 
 Synthetic data only; TestClient does not enter the application lifespan.
 """
+
 import os
 import tempfile
 import unittest
@@ -23,14 +24,31 @@ class SchemaValidationTests(unittest.TestCase):
         self.runtime = self.root / "runtime"
         self.day = datetime.now(TZ).date()
         self.headers = {"X-AscentIQ-Request": "1"}
-        self.env = patch.dict(os.environ, {"DATABASE_BACKEND": "json", "DASHBOARD_USERNAME": "tester",
-            "DASHBOARD_PASSWORD": "synthetic-login-password", "DASHBOARD_SCHEDULE_ENABLED": "false",
-            "DASHBOARD_SLEEP_SCHEDULE_ENABLED": "false", "OPENAI_API_KEY": "", "GARMIN_EMAIL": "",
-            "GARMIN_PASSWORD": "", "HEVY_API_KEY": "", "DASHBOARD_SECURE_COOKIES": "false"})
+        self.env = patch.dict(
+            os.environ,
+            {
+                "DATABASE_BACKEND": "json",
+                "DASHBOARD_USERNAME": "tester",
+                "DASHBOARD_PASSWORD": "synthetic-login-password",
+                "DASHBOARD_SCHEDULE_ENABLED": "false",
+                "DASHBOARD_SLEEP_SCHEDULE_ENABLED": "false",
+                "OPENAI_API_KEY": "",
+                "GARMIN_EMAIL": "",
+                "GARMIN_PASSWORD": "",
+                "HEVY_API_KEY": "",
+                "DASHBOARD_SECURE_COOKIES": "false",
+            },
+        )
         self.env.start()
         self.client = TestClient(create_app(self.runtime, self.root))
-        self.assertEqual(self.client.post("/api/auth/login", json={"username": "tester", "password": "synthetic-login-password"},
-                                         headers=self.headers).status_code, 200)
+        self.assertEqual(
+            self.client.post(
+                "/api/auth/login",
+                json={"username": "tester", "password": "synthetic-login-password"},
+                headers=self.headers,
+            ).status_code,
+            200,
+        )
 
     def tearDown(self):
         self.client.close()
@@ -48,8 +66,7 @@ class SchemaValidationTests(unittest.TestCase):
     def test_missing_field_names_the_field(self):
         response = self.post("/api/import/reconcile", {})
         self.assertEqual(response.status_code, 400)
-        self.assertTrue(response.json()["detail"].startswith("action: campo obrigatório"),
-                        response.json()["detail"])
+        self.assertTrue(response.json()["detail"].startswith("action: campo obrigatório"), response.json()["detail"])
 
     def test_reconcile_requires_record_identifier(self):
         response = self.post("/api/import/reconcile", {"action": "keep"})
@@ -57,8 +74,9 @@ class SchemaValidationTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "Informe o registro a reconciliar.")
 
     def test_extra_fields_are_ignored(self):
-        response = self.post("/api/personal/profile", {"value": {"name": "Pessoa sintética"},
-                                                       "unknown_field": {"nested": True}})
+        response = self.post(
+            "/api/personal/profile", {"value": {"name": "Pessoa sintética"}, "unknown_field": {"nested": True}}
+        )
         self.assertEqual(response.status_code, 200, response.text[:500])
 
     def test_server_models_also_return_400(self):
@@ -70,8 +88,7 @@ class SchemaValidationTests(unittest.TestCase):
         response = self.post("/api/assistant", {"question": "Como foi o meu dia?", "days": 120})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], "Use um período de 1 a 90 dias.")
-        response = self.post("/api/personal/measurements",
-                             {"record": {"date": self.day.isoformat(), "weight_kg": -1}})
+        response = self.post("/api/personal/measurements", {"record": {"date": self.day.isoformat(), "weight_kg": -1}})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], "weight_kg: informe um número entre 20 e 500.")
 

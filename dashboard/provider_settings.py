@@ -1,4 +1,5 @@
 """Credentials configured in the private UI, encrypted at rest and never returned."""
+
 import json
 import os
 import threading
@@ -6,10 +7,16 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-FIELDS = {'garmin': {'email': 'GARMIN_EMAIL', 'password': 'GARMIN_PASSWORD'},
-          'hevy': {'api_key': 'HEVY_API_KEY'},
-          'ai': {'provider': 'ASCENTIQ_AI_PROVIDER', 'api_key': 'OPENAI_API_KEY',
-                 'model': 'OPENAI_MODEL', 'local_model': 'OLLAMA_MODEL'}}
+FIELDS = {
+    'garmin': {'email': 'GARMIN_EMAIL', 'password': 'GARMIN_PASSWORD'},
+    'hevy': {'api_key': 'HEVY_API_KEY'},
+    'ai': {
+        'provider': 'ASCENTIQ_AI_PROVIDER',
+        'api_key': 'OPENAI_API_KEY',
+        'model': 'OPENAI_MODEL',
+        'local_model': 'OLLAMA_MODEL',
+    },
+}
 _LOCK = threading.RLock()
 
 
@@ -54,6 +61,7 @@ class ProviderSettings:
                 raise ValueError('Selecione Ollama local ou OpenAI.')
             if merged.get('local_model'):
                 from dashboard.local_ai import valid_model
+
                 if not valid_model(merged['local_model']):
                     raise ValueError('Use um modelo local instalado; modelos cloud não são permitidos.')
             if selected == 'ollama':
@@ -67,7 +75,10 @@ class ProviderSettings:
                 stream.write(os.urandom(32))
         nonce = os.urandom(12)
         temp = self.path.with_suffix('.tmp')
-        temp.write_bytes(nonce + AESGCM(self.key.read_bytes()).encrypt(nonce, json.dumps(values).encode(), b'ascentiq-connections-v1'))
+        temp.write_bytes(
+            nonce
+            + AESGCM(self.key.read_bytes()).encrypt(nonce, json.dumps(values).encode(), b'ascentiq-connections-v1')
+        )
         temp.chmod(0o600)
         temp.replace(self.path)
         self.apply()
@@ -84,10 +95,21 @@ class ProviderSettings:
 
     def status(self):
         from dashboard.local_ai import configuration
+
         ai = configuration()
-        return [{'id': provider, 'name': {'garmin': 'Garmin Connect', 'hevy': 'Hevy', 'ai': 'Inteligência artificial'}[provider],
-                 'configured': ai['configured'] if provider == 'ai' else all(bool(os.environ.get(env)) for key, env in fields.items() if key != 'model'),
-                 'enabled': os.environ.get('ASCENTIQ_' + provider.upper() + '_ENABLED', 'true') == 'true',
-                 **({'provider': ai['provider'], 'model': ai['model'], 'local': ai['local']} if provider == 'ai' else {}),
-                 'fields': list(fields), 'mode': 'read_only' if provider != 'ai' else 'on_request'}
-                for provider, fields in FIELDS.items()]
+        return [
+            {
+                'id': provider,
+                'name': {'garmin': 'Garmin Connect', 'hevy': 'Hevy', 'ai': 'Inteligência artificial'}[provider],
+                'configured': ai['configured']
+                if provider == 'ai'
+                else all(bool(os.environ.get(env)) for key, env in fields.items() if key != 'model'),
+                'enabled': os.environ.get('ASCENTIQ_' + provider.upper() + '_ENABLED', 'true') == 'true',
+                **(
+                    {'provider': ai['provider'], 'model': ai['model'], 'local': ai['local']} if provider == 'ai' else {}
+                ),
+                'fields': list(fields),
+                'mode': 'read_only' if provider != 'ai' else 'on_request',
+            }
+            for provider, fields in FIELDS.items()
+        ]

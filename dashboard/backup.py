@@ -1,4 +1,5 @@
 """Local encrypted backups; verify every file before reporting success."""
+
 from __future__ import annotations
 
 import argparse
@@ -94,26 +95,34 @@ def create_backup(root: Path, output: Path, *, database: bool = False) -> dict:
         extras = []
         if database:
             from dashboard.repository import PostgresRepository, connect, contents_digest
+
             dump = temp / "postgres.dump"
             with connect() as conn:
                 conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
                 snapshot = conn.execute("SELECT pg_export_snapshot()").fetchone()[0]
                 revision = conn.execute("SELECT active_revision FROM athlete.state WHERE singleton").fetchone()[0]
                 _, files = PostgresRepository().files(revision)
-                dumped = subprocess.run(["pg_dump", "-Fc", "--snapshot",snapshot,"-f", str(dump)], capture_output=True)
+                dumped = subprocess.run(
+                    ["pg_dump", "-Fc", "--snapshot", snapshot, "-f", str(dump)], capture_output=True
+                )
                 if dumped.returncode:
                     raise RuntimeError("Database backup failed")
                 metadata = temp / "database-manifest.json"
-                metadata.write_text(json.dumps({"revision":str(revision),"datasets_digest":contents_digest(files)}),encoding="utf-8")
+                metadata.write_text(
+                    json.dumps({"revision": str(revision), "datasets_digest": contents_digest(files)}), encoding="utf-8"
+                )
             extras.append((dump, "database/postgres.dump"))
-            extras.append((metadata,"database/manifest.json"))
+            extras.append((metadata, "database/manifest.json"))
         members = []
         for base in ("data", "analysis", "activities", "runtime", "docs", "scripts", "dashboard"):
             for path in sorted((root / base).rglob("*")):
                 if not path.is_file() or path.is_symlink():
                     continue
                 rel = path.relative_to(root)
-                if any(part in {"backups", "node_modules", "dist", "__pycache__", "staging", "workspaces"} for part in rel.parts):
+                if any(
+                    part in {"backups", "node_modules", "dist", "__pycache__", "staging", "workspaces"}
+                    for part in rel.parts
+                ):
                     continue
                 if output.resolve() in path.resolve().parents:
                     continue
@@ -143,8 +152,13 @@ def create_backup(root: Path, output: Path, *, database: bool = False) -> dict:
         pending.chmod(0o600)
         verification = verify(pending, key_path, output)
         pending.replace(archive)
-    result = {**verification, "archive": archive.name, "database": database, "created_at": stamp,
-              "local_date": datetime.now(ZoneInfo(os.environ.get("TZ","America/Sao_Paulo"))).date().isoformat()}
+    result = {
+        **verification,
+        "archive": archive.name,
+        "database": database,
+        "created_at": stamp,
+        "local_date": datetime.now(ZoneInfo(os.environ.get("TZ", "America/Sao_Paulo"))).date().isoformat(),
+    }
     (output / "latest.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     return result
 
@@ -156,7 +170,11 @@ def main():
     parser.add_argument("--database", action="store_true")
     parser.add_argument("--verify", type=Path)
     args = parser.parse_args()
-    result = verify(args.verify, args.output / "recovery.key", args.output) if args.verify else create_backup(args.root, args.output, database=args.database)
+    result = (
+        verify(args.verify, args.output / "recovery.key", args.output)
+        if args.verify
+        else create_backup(args.root, args.output, database=args.database)
+    )
     print(json.dumps(result))
 
 

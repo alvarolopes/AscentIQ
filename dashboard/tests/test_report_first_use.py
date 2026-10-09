@@ -1,4 +1,5 @@
 """Compile real templates against empty and synthetic data, never a real dataset."""
+
 from __future__ import annotations
 
 import copy
@@ -59,24 +60,50 @@ class FirstUseReportTests(unittest.TestCase):
 
     def test_populated_report_compiles_and_pdf_excludes_private_fields(self):
         snapshot = copy.deepcopy(self.snapshot)
-        markers = {key: f"PRIVATE_{key.upper()}_SYNTHETIC" for key in
-                   ("body", "medical", "nutrition", "physiology", "sleep", "recovery", "health_goal", "goals", "credentials")}
+        markers = {
+            key: f"PRIVATE_{key.upper()}_SYNTHETIC"
+            for key in (
+                "body",
+                "medical",
+                "nutrition",
+                "physiology",
+                "sleep",
+                "recovery",
+                "health_goal",
+                "goals",
+                "credentials",
+            )
+        }
         snapshot["body"]["current"]["weight_kg"] = markers["body"]
         snapshot["medical"]["status"]["cardiovascular_summary"] = markers["medical"]
         snapshot["nutrition"] = {"secret": markers["nutrition"]}
         snapshot["physiology"] = [{"secret": markers["physiology"]}]
         snapshot["sleep"]["secret"] = markers["sleep"]
-        snapshot["performance"]["summary"] = {"fitness": 1, "fatigue": 2, "form": -1,
-                                                  "recovery": {"secret": markers["recovery"]}}
+        snapshot["performance"]["summary"] = {
+            "fitness": 1,
+            "fatigue": 2,
+            "form": -1,
+            "recovery": {"secret": markers["recovery"]},
+        }
         snapshot["athlete"].update(name="Synthetic Athlete", current_goal=markers["health_goal"])
         snapshot["goals"]["health"] = markers["goals"]
         snapshot["credentials"] = {"secret": markers["credentials"]}
-        snapshot["activities"] = [{"id": "synthetic-activity", "date": "2026-10-03", "name": "Synthetic Run",
-                                    "kind": "running", "distance_km": 2, "elapsed_time": "00:12:00",
-                                    "avg_hr": 120, "elevation_gain_m": 3}]
+        snapshot["activities"] = [
+            {
+                "id": "synthetic-activity",
+                "date": "2026-10-03",
+                "name": "Synthetic Run",
+                "kind": "running",
+                "distance_km": 2,
+                "elapsed_time": "00:12:00",
+                "avg_hr": 120,
+                "elevation_gain_m": 3,
+            }
+        ]
         snapshot["freshness"]["activities"] = "2026-10-03"
-        snapshot["performance"]["series"] = [{"date": "2026-10-03", "fitness": 1, "fatigue": 2,
-                                               "form": -1, "daily_load": 3}]
+        snapshot["performance"]["series"] = [
+            {"date": "2026-10-03", "fitness": 1, "fatigue": 2, "form": -1, "daily_load": 3}
+        ]
         snapshot["week"].update(activity_count=1, running_km=2, running_elevation_m=3)
         allowed = json.dumps(training_snapshot(snapshot))
         pdf, text, html = self.compile(snapshot, "synthetic-populated")

@@ -1,4 +1,5 @@
 """Count daily records while deduplicating linked strength sessions."""
+
 from datetime import date, timedelta
 
 from scripts.sleep_data import sleep_rows
@@ -9,7 +10,17 @@ def frequency(snapshot, food, year):
     current, end = date(year, 1, 1), date(year, 12, 31)
     while current <= end:
         key = current.isoformat()
-        rows[key] = dict(date=key,count=0,sleep_minutes=None,meal_count=0,kcal=None,pending_count=0,running_count=0,running_km=None,strength_count=0)
+        rows[key] = dict(
+            date=key,
+            count=0,
+            sleep_minutes=None,
+            meal_count=0,
+            kcal=None,
+            pending_count=0,
+            running_count=0,
+            running_km=None,
+            strength_count=0,
+        )
         current += timedelta(days=1)
     for sleep in sleep_rows(snapshot.get('sleep', {}), end.isoformat()):
         row = rows.get(sleep.get('date'))
@@ -29,7 +40,7 @@ def frequency(snapshot, food, year):
                 row['running_km'] = (row['running_km'] or 0) + activity['distance_km']
         elif activity.get('kind') == 'strength':
             row['strength_count'] += 1
-    for key,state in food.items():
+    for key, state in food.items():
         row = rows.get(key)
         if row is None:
             continue
@@ -39,10 +50,10 @@ def frequency(snapshot, food, year):
         for entry in entries:
             items = (entry.get('analysis') or {}).get('items', [])
             row['pending_count'] += int(not items or any(i.get('kcal') is None for i in items))
-            values.extend(i['kcal'] for i in items if isinstance(i.get('kcal'), (int,float)))
-        row['kcal'] = round(sum(values),1) if values else None
+            values.extend(i['kcal'] for i in items if isinstance(i.get('kcal'), (int, float)))
+        row['kcal'] = round(sum(values), 1) if values else None
     for row in rows.values():
         row['count'] += sum(int(row[key] > 0) for key in ('meal_count', 'running_count', 'strength_count'))
         if row['running_km'] is not None:
-            row['running_km'] = round(row['running_km'],2)
-    return {'year':year,'days':list(rows.values())}
+            row['running_km'] = round(row['running_km'], 2)
+    return {'year': year, 'days': list(rows.values())}
