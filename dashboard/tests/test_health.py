@@ -211,6 +211,99 @@ class HealthTests(unittest.TestCase):
         self.assertTrue(current["is_projection"])
         self.assertIsNone(current["deficit_kcal"])
 
+    def test_unknown_provider_row_with_later_observation_becomes_complete(self):
+        self.profile()
+        selected = self.day - timedelta(days=1)
+        self.diary.meal(selected, 2200)
+        snapshot = {
+            "daily_energy": {
+                "daily": [
+                    {
+                        "date": selected.isoformat(),
+                        "total_kcal": 2713,
+                        "resting_kcal": 1900,
+                        "source": "garmin",
+                        "coverage": "unknown",
+                        "method": "wearable_total",
+                        "observed_at": self.day.isoformat() + "T08:00:00-03:00",
+                    }
+                ]
+            }
+        }
+        energy = self.store.summary(selected, snapshot, self.diary)["energy"]
+        self.assertEqual(energy["source"], "garmin")
+        self.assertEqual(energy["coverage"], "full")
+        self.assertEqual(energy["expenditure_kcal"], 2713)
+        self.assertTrue(energy["usable"])
+        self.assertEqual(energy["deficit_kcal"], 2713 - 2200)
+
+    def test_today_projects_recent_wearable_mean_when_day_is_not_complete(self):
+        self.profile()
+        snapshot = {
+            "daily_energy": {
+                "daily": [
+                    {
+                        "date": (self.day - timedelta(days=offset)).isoformat(),
+                        "total_kcal": 2700 + offset,
+                        "resting_kcal": 1900,
+                        "source": "garmin",
+                        "coverage": "complete",
+                        "coverage_hours": 24,
+                    }
+                    for offset in range(1, 9)
+                ]
+                + [
+                    {
+                        "date": self.day.isoformat(),
+                        "total_kcal": 1500,
+                        "source": "garmin",
+                        "coverage": "partial",
+                        "coverage_hours": 15,
+                        "observed_at": self.day.isoformat() + "T15:00:00-03:00",
+                    }
+                ]
+            }
+        }
+        self.diary.meal(self.day, 2200)
+        summary = self.store.summary(self.day, snapshot, self.diary)
+        energy = summary["energy"]
+        self.assertEqual(energy["source"], "garmin_recent_mean")
+        self.assertEqual(energy["method"], "wearable_recent_mean_14d_v1")
+        self.assertEqual(energy["coverage_basis"], "wearable_recent_mean")
+        self.assertEqual(energy["expenditure_status"], "projected")
+        self.assertTrue(energy["is_projection"])
+        self.assertFalse(energy["usable"])
+        self.assertIsNone(energy["deficit_kcal"])
+        self.assertEqual(energy["expenditure_kcal"], round(sum(2700 + o for o in range(1, 9)) / 8))
+        self.assertEqual(energy["alternatives"][0]["source"], "garmin")
+        self.assertEqual(energy["alternatives"][0]["coverage"], "partial")
+        self.assertEqual(summary["expenditure_reference"]["days_used"], 8)
+        self.assertEqual(summary["expenditure_reference"]["source"], "garmin_recent_mean")
+
+    def test_wearable_method_without_recent_days_leaves_expenditure_unknown(self):
+        self.profile()
+        self.store.update(
+            "preferences", {"energy_method": "wearable", "effective_from": (self.day - timedelta(days=30)).isoformat()}
+        )
+        snapshot = {
+            "daily_energy": {
+                "daily": [
+                    {
+                        "date": (self.day - timedelta(days=offset)).isoformat(),
+                        "total_kcal": 2700,
+                        "source": "garmin",
+                        "coverage": "complete",
+                    }
+                    for offset in range(1, 6)
+                ]
+            }
+        }
+        energy = self.store.summary(self.day, snapshot, self.diary)["energy"]
+        self.assertIsNone(energy["expenditure_kcal"])
+        self.assertEqual(energy["expenditure_status"], "unknown")
+        self.assertIsNone(energy["source"])
+        self.assertIn("relógio", " ".join(energy["limitations"]))
+
     def test_explicit_model_choice_and_full_provider_precedence(self):
         self.profile()
         selected = self.day - timedelta(days=1)

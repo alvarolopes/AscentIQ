@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,10 @@ except ImportError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from dashboard.wearable_energy import infer_coverage  # noqa: E402
 DEFAULT_INPUT = ROOT / "data" / "garmin_mcp_exports"
 TRAINING_HISTORY_PATH = ROOT / "data" / "training_history.json"
 SLEEP_PATH = ROOT / "data" / "garmin_sleep_reference_2026_04.json"
@@ -361,6 +366,15 @@ def normalize_daily_energy(row: dict[str, Any], fallback_date=None, observed_at=
             value = energy_number(value)
         if value is not None and value != "":
             item[field] = value
+    _, wellness_start = key_lookup(row, "wellnessStartTimeLocal", "wellnessStartLocal", "wellness_start_local")
+    if wellness_start not in (None, ""):
+        item.setdefault("wellness_start_local", str(wellness_start))
+    if item["coverage"] == "unknown" and item.get("observed_at"):
+        inferred, hours = infer_coverage(day, item["observed_at"], wellness_start)
+        if inferred != "unknown":
+            item["coverage"] = inferred
+            item["coverage_hours"] = hours
+            item["coverage_basis"] = "inferred_from_observation_time"
     return item
 
 

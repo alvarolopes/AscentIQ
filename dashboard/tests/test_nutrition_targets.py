@@ -1,5 +1,6 @@
 """Automatic daily goals use dated synthetic inputs and no external providers."""
 
+import copy
 import json
 import tempfile
 import unittest
@@ -11,6 +12,32 @@ from dashboard import settings
 from dashboard.health import HealthStore, _active_plan, _today
 from dashboard.nutrition_targets import NutritionTargets, context_for
 from dashboard.tests import pg
+
+
+class Diary:
+    def __init__(self):
+        self.days = {}
+
+    def meal(self, day, kcal=2400):
+        self.days[day.isoformat()] = {
+            'entries': [
+                {
+                    'id': 'meal-' + day.isoformat(),
+                    'text': 'Refeição sintética',
+                    'analysis': {'items': [{'name': 'Alimento de exemplo', 'kcal': kcal}]},
+                }
+            ],
+            'completeness': 'complete',
+            'fasting_declared': False,
+        }
+
+    def read(self, day):
+        return copy.deepcopy(
+            self.days.get(day.isoformat(), {'entries': [], 'completeness': 'empty', 'fasting_declared': False})
+        )
+
+    def read_many(self, days):
+        return {day: self.read(day) for day in days}
 
 
 class NutritionTargetTests(unittest.TestCase):
@@ -242,3 +269,98 @@ class NutritionTargetTests(unittest.TestCase):
         self.assertNotIn('estabilidade hormonal', plan['reason'])
         self.assertIn('Meta:', plan['reason'])
         self.assertEqual(plan['protein_g'], 144)
+
+    def garmin_days(self, count, total=2700, end=None):
+        end = end or self.day - timedelta(days=1)
+        return [
+            {
+                'date': (end - timedelta(days=offset)).isoformat(),
+                'total_kcal': total + offset,
+                'resting_kcal': 1900,
+                'source': 'garmin',
+                'coverage': 'complete',
+                'coverage_hours': 24,
+            }
+            for offset in range(count)
+        ]
+
+    def test_wearable_recent_mean_is_the_primary_reference(self):
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(10)}
+        with patch('dashboard.nutrition_targets.request_text', return_value=self.output) as infer:
+            self.targets.refresh(self.day)
+            self.assertEqual(self.targets.status, 'ready')
+            context = json.loads(infer.call_args.args[1])
+            reference = context['energy_reference']
+            expected = round(sum(2700 + o for o in range(10)) / 10)
+            self.assertEqual(reference['source'], 'garmin_recent_mean')
+            self.assertEqual(reference['total_kcal'], expected)
+            self.assertEqual(reference['days_used'], 10)
+            self.assertEqual(context['prompt_revision'], 4)
+            self.assertEqual(context['energy_reference_alternatives'][0]['source'], 'profile_model')
+            self.assertEqual(context['calibration']['status'], 'unavailable')
+        plan = _active_plan(self.health.read(), self.day)
+        self.assertEqual(plan['baseline_source'], 'garmin_recent_mean')
+        self.assertEqual(plan['baseline_method'], 'wearable_recent_mean_14d_v1')
+        self.assertEqual(plan['baseline_expenditure_kcal'], expected)
+        self.assertIn('média do relógio', plan['reason'])
+        self.assertNotIn('Fator de atividade estimado', ' '.join(plan['limitations']))
+        view = self.targets.view(self.day)
+        self.assertEqual(view['baseline_source'], 'garmin_recent_mean')
+        self.assertEqual(view['baseline_kcal'], expected)
+
+    def test_five_wearable_days_fall_back_to_the_profile_model(self):
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(5)}
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertEqual(context['energy_reference']['source'], 'profile_model')
+        self.assertEqual(context['energy_reference_alternatives'], [])
+
+    def test_wearable_method_without_enough_days_never_calls_ai(self):
+        self.health.update('preferences', {'energy_method': 'wearable'})
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(5)}
+        with patch('dashboard.nutrition_targets.request_text') as infer:
+            self.targets.refresh(self.day)
+            self.assertEqual(self.targets.view(self.day)['status'], 'missing_data')
+            self.assertTrue(any('relógio' in text for text in self.targets.missing))
+            infer.assert_not_called()
+
+    def test_model_method_ignores_wearable_rows(self):
+        self.health.update('preferences', {'energy_method': 'model'})
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(10)}
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertEqual(context['energy_reference']['source'], 'profile_model')
+        self.assertEqual(context['energy_reference_alternatives'][0]['source'], 'garmin_recent_mean')
+
+    def test_insufficient_calibration_is_declared_as_a_limitation(self):
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(10)}
+        diary = Diary()
+        targets = NutritionTargets(self.health, lambda: self.snapshot, diary=diary)
+        with patch('dashboard.nutrition_targets.request_text', return_value=self.output):
+            targets.refresh(self.day)
+        self.assertEqual(targets.status, 'ready')
+        plan = _active_plan(self.health.read(), self.day)
+        self.assertEqual(plan['calibration']['status'], 'insufficient')
+        self.assertTrue(any('Calibração por ingestão e tendência de peso' in t for t in plan['limitations']))
+
+    def test_applied_calibration_shifts_the_reference_within_the_clamp(self):
+        diary = Diary()
+        for offset in range(1, 15):
+            diary.meal(self.day - timedelta(days=offset), kcal=2400)
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(14, total=2700)}
+        for index, day in enumerate(range(24, 0, -7)):
+            self.health.save(
+                'measurements',
+                {'id': f'w{index}', 'date': (self.day - timedelta(days=day)).isoformat(), 'weight_kg': 80.0},
+            )
+        targets = NutritionTargets(self.health, lambda: self.snapshot, diary=diary)
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day, diary)
+        self.assertEqual(context['calibration']['status'], 'applied')
+        reference = context['energy_reference']
+        self.assertIn('intake_weight_trend_calibration_v1', reference['method'])
+        self.assertEqual(reference['total_kcal'], context['calibration']['calibrated_kcal'])
+        self.assertLess(abs(reference['total_kcal'] - context['calibration']['implied_tdee_kcal']), 1000)
+        with patch('dashboard.nutrition_targets.request_text', return_value=self.output):
+            targets.refresh(self.day)
+        self.assertEqual(targets.status, 'ready')
+        plan = _active_plan(self.health.read(), self.day)
+        self.assertEqual(plan['calibration']['status'], 'applied')
+        self.assertEqual(plan['baseline_source'], 'garmin_recent_mean')
