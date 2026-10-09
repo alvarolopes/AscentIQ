@@ -1,10 +1,12 @@
 """Versioned PostgreSQL repository and lossless legacy calculation adapter."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
 import sqlite3
+import threading
 import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -16,6 +18,48 @@ ATHLETE_ID = uuid.UUID("9dcb4c42-e857-4279-b06e-7e29d9c714d8")
 LOCK_ID = 1730962174
 CURRENT = ContextVar("athlete_repository", default=None)
 REVISION = ContextVar("athlete_revision", default=None)
+
+
+class RevisionCache:
+    """In-memory cache scoped to a single revision; callers must copy before mutating."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._key = None
+        self._value = None
+        self._parsed_key = None
+        self._parsed = {}
+
+    @staticmethod
+    def _enabled():
+        return os.environ.get("ASCENTIQ_REVISION_CACHE") != "false"
+
+    def get(self, key, loader):
+        if not self._enabled():
+            return loader()
+        with self._lock:
+            if self._key != key:
+                self._key, self._value = key, loader()
+            return self._value
+
+    def parsed(self, key, path, raw):
+        if not self._enabled():
+            return json.loads(raw.decode("utf-8-sig"))
+        with self._lock:
+            if self._parsed_key != key:
+                self._parsed_key, self._parsed = key, {}
+            if path not in self._parsed:
+                self._parsed[path] = json.loads(raw.decode("utf-8-sig"))
+            return self._parsed[path]
+
+    def invalidate(self):
+        with self._lock:
+            self._key = self._value = self._parsed_key = None
+            self._parsed = {}
+
+
+FILES_CACHE = RevisionCache()
+SNAPSHOT_CACHE = RevisionCache()
 
 
 def postgres_enabled(root=ROOT):
@@ -101,11 +145,17 @@ class PostgresRepository:
 
     def files(self, revision=None):
         with connect() as conn:
-            revision = revision or conn.execute("SELECT active_revision FROM athlete.state WHERE singleton").fetchone()[0]
             if revision is None:
-                raise RuntimeError("PostgreSQL has not been initialized with athlete data")
-            rows = conn.execute("SELECT d.path,b.original_bytes FROM athlete.datasets d JOIN athlete.dataset_blobs b ON b.digest=d.digest WHERE d.revision_id=%s", (revision,))
-            return revision, {path: bytes(raw) for path, raw in rows}
+                revision = conn.execute("SELECT active_revision FROM athlete.state WHERE singleton").fetchone()[0]
+                if revision is None:
+                    raise RuntimeError("PostgreSQL has not been initialized with athlete data")
+                return revision, FILES_CACHE.get(revision, lambda: self._load_files(conn, revision))
+            return revision, self._load_files(conn, revision)
+
+    @staticmethod
+    def _load_files(conn, revision):
+        rows = conn.execute("SELECT d.path,b.original_bytes FROM athlete.datasets d JOIN athlete.dataset_blobs b ON b.digest=d.digest WHERE d.revision_id=%s", (revision,))
+        return {path: bytes(raw) for path, raw in rows}
 
     def export(self, target, revision=None):
         revision, files = self.files(revision)
@@ -144,6 +194,7 @@ class PostgresRepository:
             if report:
                 conn.execute("INSERT INTO athlete.reports(id,revision_id,metadata) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING", (report["id"],revision,Jsonb(report)))
             conn.execute("UPDATE athlete.state SET active_revision=%s WHERE singleton", (revision,))
+        FILES_CACHE.invalidate()
         return revision
 
     def _project(self, conn, revision, values):
@@ -244,13 +295,18 @@ def revision_metadata():
 
 def read_dataset(root, path, default=None):
     files = CURRENT.get()
+    revision = REVISION.get()
     if files is None and postgres_enabled(root):
-        _, files = PostgresRepository().files()
+        revision, files = PostgresRepository().files()
     if files is not None:
         raw = files.get(path)
-    else:
-        local = Path(root) / path
-        raw = local.read_bytes() if local.exists() else None
+        if raw is None:
+            return default
+        if revision is not None:
+            return copy.deepcopy(FILES_CACHE.parsed(revision, path, raw))
+        return json.loads(raw.decode("utf-8-sig"))
+    local = Path(root) / path
+    raw = local.read_bytes() if local.exists() else None
     return json.loads(raw.decode("utf-8-sig")) if raw is not None else default
 
 

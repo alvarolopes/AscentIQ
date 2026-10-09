@@ -83,6 +83,20 @@ failed/uncommitted reports are not listed by the PostgreSQL API. Historical
 reports retain their original snapshots. The live dashboard reads current data,
 not the last PDF snapshot. PDF inputs remain training-only.
 
+## Cache em memória por revisão
+
+In PostgreSQL mode the API keeps, per process, the dataset blobs and parsed JSON
+documents of only the latest active revision, plus the last built snapshot keyed
+by `(revision, day)`. The active revision is re-read on every request, so a
+revision published by another process (for example `db-tools`) is picked up on
+the next request, and the day change invalidates the snapshot by itself.
+`publish()` also clears the dataset cache. Consumers may mutate the returned
+objects, so `read_dataset` and `build_snapshot` return deep copies of cached
+content; nothing is written to disk or shared caches. Memory cost is roughly
+one revision of raw bytes (~8 MB) plus parsed documents (~30–50 MB) and one
+snapshot — acceptable for a single-athlete deployment. Set
+`ASCENTIQ_REVISION_CACHE=false` to disable the caches without reverting code.
+
 ## Backup and restoration
 
 Backups use AES-256-GCM authenticated encryption and SHA-256 verification of

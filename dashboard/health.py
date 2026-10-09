@@ -413,8 +413,7 @@ def _publish_plan(state, plan):
     state["plans"].append(plan)
 
 
-def _food(diary, day):
-    record = diary.read(day)
+def _food(record):
     entries = record.get("entries", [])
     values, pending = [], 0
     for entry in entries:
@@ -778,10 +777,11 @@ class HealthStore:
         if not 1 <= days <= 90:
             raise ValueError("O período deve conter de 1 a 90 dias.")
         provider_rows = _provider_energy(snapshot, self.root)
+        selected_days = [day - timedelta(days=offset) for offset in range(days - 1, -1, -1)]
+        records = diary.read_many(selected_days)
         foods, series = [], []
-        for offset in range(days - 1, -1, -1):
-            selected = day - timedelta(days=offset)
-            food = _food(diary, selected)
+        for selected in selected_days:
+            food = _food(records[selected])
             foods.append(food["record"])
             series.append(_energy(state, snapshot, selected, food, provider_rows))
         usable = [r for r in series if r["usable"]]

@@ -7,7 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dashboard.backup import create_backup, verify
-from dashboard.repository import (ROOT, CURRENT, PostgresRepository, canonical, connect,
+import dashboard.repository as repository_module
+from dashboard.repository import (ROOT, CURRENT, FILES_CACHE, PostgresRepository, canonical, connect,
                                  contents_digest, migrate, read_dataset, validate_path,
                                  operational_db, identity)
 
@@ -149,6 +150,38 @@ class PostgresIntegrationTests(unittest.TestCase):
         self.assertEqual(repo.counts()["exercise_sets"],2)
         with connect() as conn:
             self.assertEqual(conn.execute("SELECT count(DISTINCT activity_id) FROM athlete.activity_sources WHERE revision_id=%s",(revision,)).fetchone()[0],1)
+
+    def test_publish_invalidates_files_cache(self):
+        class Recording:
+            def __init__(self, conn, queries):
+                self.conn = conn
+                self.queries = queries
+
+            def __enter__(self):
+                self.conn.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.conn.__exit__(*args)
+
+            def execute(self, query, values=None):
+                self.queries.append(query)
+                return self.conn.execute(query) if values is None else self.conn.execute(query, values)
+
+        repo = PostgresRepository()
+        FILES_CACHE.invalidate()
+        first = repo.publish(self.fixture("cache-v1"), reason="synthetic", expected=repo.active())
+        queries = []
+        real_connect = repository_module.connect
+        with patch.object(repository_module, "connect",
+                          side_effect=lambda **kwargs: Recording(real_connect(**kwargs), queries)):
+            self.assertEqual(repo.files()[0], first)
+            repo.files()
+        self.assertEqual(len([q for q in queries if "dataset_blobs" in q]), 1)
+        second = repo.publish(self.fixture("cache-v2"), reason="synthetic", expected=first)
+        self.assertEqual(repo.files()[0], second)
+        self.assertEqual(json.loads(repo.files()[1]["data/training_history.json"])[0]["name"], "cache-v2")
+        FILES_CACHE.invalidate()
 
     def test_postgres_auth_and_job_exclusion(self):
         from dashboard.jobs import JobManager

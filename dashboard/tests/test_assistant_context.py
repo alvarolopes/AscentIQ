@@ -18,6 +18,9 @@ class Diary:
                 'completeness': 'partial', 'pending_count': 0, 'unknown_nutrients': {},
                 'fasting_declared': False, 'complete_nutrition': False}
 
+    def read_many(self, days):
+        return {day: self.read(day) for day in days}
+
 
 def metric(summary, name):
     if 'rows' in summary:

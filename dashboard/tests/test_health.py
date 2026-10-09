@@ -23,6 +23,9 @@ class Diary:
     def read(self, day):
         return copy.deepcopy(self.days.get(day.isoformat(), {"entries": [], "completeness": "empty", "fasting_declared": False}))
 
+    def read_many(self, days):
+        return {day: self.read(day) for day in days}
+
 
 class HealthTests(unittest.TestCase):
     def setUp(self):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import unicodedata
@@ -8,7 +9,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
-from dashboard.repository import dataset_bytes, read_dataset, repository_context, revision_metadata
+from dashboard.repository import (REVISION, SNAPSHOT_CACHE, dataset_bytes, postgres_enabled,
+                                  read_dataset, repository_context, revision_metadata)
 from scripts.sleep_data import sleep_rows, summarize_sleep
 from scripts.build_performance_management_model import build_recovery_summary
 
@@ -110,6 +112,16 @@ def medical_documents(root: Path) -> dict[str, Path]:
 
 
 def build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
+    today = today or datetime.now(TZ).date()
+    if postgres_enabled(root):
+        with repository_context(root):
+            revision = REVISION.get()
+        snapshot = SNAPSHOT_CACHE.get((revision, today), lambda: _load_snapshot(root, today))
+        return copy.deepcopy(snapshot)
+    return _load_snapshot(root, today)
+
+
+def _load_snapshot(root: Path, today: date) -> dict:
     with repository_context(root):
         result = _build_snapshot(root, today)
         metadata = revision_metadata()

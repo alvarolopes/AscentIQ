@@ -26,11 +26,13 @@ class FoodDiary:
         return operational_db(self.runtime, 'food', self.root)
 
     def _load(self, conn, day):
-        key = day.isoformat()
-        row = conn.execute('SELECT payload FROM food_diary_state WHERE day=?', (key,)).fetchone()
+        row = conn.execute('SELECT payload FROM food_diary_state WHERE day=?', (day.isoformat(),)).fetchone()
         if row:
             return json.loads(row[0])
-        path = self.folder / (key + '.json')
+        return self._legacy(day)
+
+    def _legacy(self, day):
+        path = self.folder / (day.isoformat() + '.json')
         legacy = json.loads(path.read_text(encoding='utf-8'), parse_constant=lambda _: None) if path.exists() else []
         if isinstance(legacy, dict):
             return legacy
@@ -73,8 +75,24 @@ class FoodDiary:
                             for x in state.get('history', [])]}
 
     def read(self, day: date):
+        return self.read_many([day])[day]
+
+    def read_many(self, days):
+        days = list(days)
+        if not days:
+            return {}
         with self._db() as conn:
-            return self._view(day, self._load(conn, day))
+            if postgres_enabled(self.root):
+                rows = conn.execute('SELECT day,payload FROM food_diary_state WHERE day = ANY(%s)',
+                                    ([selected.isoformat() for selected in days],)).fetchall()
+            else:
+                marks = ','.join('?' for _ in days)
+                rows = conn.execute(f'SELECT day,payload FROM food_diary_state WHERE day IN ({marks})',
+                                    tuple(selected.isoformat() for selected in days)).fetchall()
+            stored = {row['day']: json.loads(row['payload']) for row in rows}
+            key = lambda selected: selected.isoformat()
+            return {selected: self._view(selected, stored[key(selected)] if key(selected) in stored
+                                         else self._legacy(selected)) for selected in days}
 
     def propose(self, day, identifier, analysis, *, expected_revision):
         """Persist an estimate for review without changing recorded nutrients."""

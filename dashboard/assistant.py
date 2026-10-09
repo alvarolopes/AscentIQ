@@ -215,7 +215,9 @@ def prepare_personal(day, days, snapshot, state, summary, diary, *, include_medi
     progress['primary_goal'] = next((x for x in raw_progress.get('goals', []) if x.get('goal_id') == primary_goal.get('id')), None)
     activities = [x for x in snapshot.get('activities', []) if in_range(x)]
     strength = [x for x in snapshot.get('strength', []) if in_range(x)]
-    foods = [diary.read(day - timedelta(days=i)) for i in reversed(range(days))]
+    ordered_days = [day - timedelta(days=i) for i in reversed(range(days))]
+    stored_foods = diary.read_many(ordered_days)
+    foods = [stored_foods[selected] for selected in ordered_days]
     detail_meals = [{'date': food['date'], 'meal': row.get('meal'), 'description': row.get('text'),
                      'totals': {field: round(sum(item[field] for item in row['analysis']['items']), 1)
                                 if (row.get('analysis') or {}).get('items') and all(isinstance(item.get(field), (int, float))
