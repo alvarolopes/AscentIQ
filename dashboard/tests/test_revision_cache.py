@@ -102,6 +102,31 @@ class RevisionCacheTests(unittest.TestCase):
             build_snapshot(ROOT, date(2026, 1, 11))
             self.assertEqual(len(calls), 3)
 
+    def test_snapshot_refreshes_warnings_without_rebuilding_cached_data(self):
+        revision = uuid.uuid4()
+        metadata = {'backend': 'postgres', 'revision': str(revision), 'warnings': []}
+        warning = 'Falha no backup após publicação.'
+        with (
+            patch('dashboard.snapshot.datasets_in_postgres', return_value=True),
+            patch('dashboard.repository.datasets_in_postgres', return_value=True),
+            patch.object(PostgresRepository, 'files', return_value=(revision, {})),
+            patch('dashboard.snapshot.revision_metadata', side_effect=lambda: metadata),
+            patch.object(snapshot_module, '_build_snapshot', return_value={'nested': {'items': []}}) as build,
+        ):
+            first = build_snapshot(ROOT, date(2026, 1, 10))
+            self.assertEqual(first['sync_warnings'], [])
+            metadata['warnings'] = [warning]
+            second = build_snapshot(ROOT, date(2026, 1, 10))
+            self.assertEqual(second['sync_warnings'], [warning])
+            self.assertEqual(second['storage']['revision'], str(revision))
+            self.assertEqual(first['sync_warnings'], [])
+            second['sync_warnings'].append('caller mutation')
+            second['nested']['items'].append('caller mutation')
+            third = build_snapshot(ROOT, date(2026, 1, 10))
+            self.assertEqual(third['sync_warnings'], [warning])
+            self.assertEqual(third['nested']['items'], [])
+            build.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

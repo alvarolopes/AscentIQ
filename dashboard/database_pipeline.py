@@ -71,7 +71,7 @@ def run_database_pipeline(
                             stage,
                             progress,
                             sources,
-                            credentials={source: providers.credentials(source) for source in sources},
+                            credentials={source: providers.credentials(source, settings) for source in sources},
                             enabled={source: providers.enabled(source) for source in sources},
                             settings=settings,
                         )

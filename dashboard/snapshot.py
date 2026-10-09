@@ -157,21 +157,16 @@ def medical_documents(root: Path) -> dict[str, Path]:
 
 def build_snapshot(root: Path = ROOT, today: date | None = None) -> dict:
     today = today or datetime.now(default_tz()).date()
-    if datasets_in_postgres(root):
-        with repository_context(root):
-            revision = REVISION.get()
-        snapshot = SNAPSHOT_CACHE.get((revision, today), lambda: _load_snapshot(root, today))
-        return copy.deepcopy(snapshot)
-    return _load_snapshot(root, today)
-
-
-def _load_snapshot(root: Path, today: date) -> dict:
     with repository_context(root):
-        result = _build_snapshot(root, today)
+        if datasets_in_postgres(root):
+            revision = REVISION.get()
+            result = copy.deepcopy(SNAPSHOT_CACHE.get((revision, today), lambda: _build_snapshot(root, today)))
+        else:
+            result = _build_snapshot(root, today)
         metadata = revision_metadata()
         if metadata:
             result["storage"] = {key: value for key, value in metadata.items() if key != "warnings"}
-            result["sync_warnings"] = metadata["warnings"]
+            result["sync_warnings"] = copy.deepcopy(metadata["warnings"])
         return result
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -37,6 +37,9 @@ class Settings:
     openai_model: str
     openai_api_key: str | None
     timezone: str
+    garmin_email: str | None = field(repr=False)
+    garmin_password: str | None = field(repr=False)
+    hevy_api_key: str | None = field(repr=False)
     garmin_mcp_command: str
     sync_start_date: date
     sync_max_activities: int
@@ -69,6 +72,9 @@ class Settings:
             openai_model=get("OPENAI_MODEL", "gpt-5"),
             openai_api_key=get("OPENAI_API_KEY") or None,
             timezone=get("TZ", "America/Sao_Paulo"),
+            garmin_email=get('GARMIN_EMAIL') or None,
+            garmin_password=get('GARMIN_PASSWORD') or None,
+            hevy_api_key=get('HEVY_API_KEY') or None,
             garmin_mcp_command=get("GARMIN_MCP_COMMAND", "mcp-garmin"),
             sync_start_date=date.fromisoformat(get("TRAINING_SYNC_START_DATE", "2024-01-01")),
             sync_max_activities=int(get("TRAINING_SYNC_MAX_ACTIVITIES", "5000")),

@@ -43,6 +43,27 @@ class LoadModelRegressionTests(unittest.TestCase):
 
         self.assertIsNone(build_model([], [], None, today=TODAY, generated_at=GENERATED_AT))
 
+    def test_markdown_escapes_untrusted_activity_text_without_changing_payload(self):
+        from dashboard.load_model import render_markdown
+
+        result, _ = build()
+        daily = result.payload['daily_series']
+        activity = next(row['activities'][0] for row in reversed(daily[-7:]) if row['activities'])
+        activity['name'] = '<img src=x onerror=alert(1)> [link](javascript:alert(1))\n# injected'
+        activity['type'] = '<script>alert(1)</script>'
+        markdown = render_markdown(result.payload['summary'], daily)
+        self.assertNotIn('<img', markdown)
+        self.assertNotIn('<script', markdown)
+        self.assertNotIn('[link](javascript:', markdown)
+        self.assertNotIn('\n# injected', markdown)
+        self.assertIn('&lt;img', markdown)
+        self.assertIn(r'\[link\]\(javascript:alert\(1\)\)', markdown)
+        self.assertEqual(activity['name'].splitlines()[-1], '# injected')
+        activity['type'] = 'Weight Training'
+        activity['hevy_total_sets'] = 3
+        activity['hevy_classification'] = '<img src=x onerror=alert(1)>'
+        self.assertNotIn('<img', render_markdown(result.payload['summary'], daily))
+
     def test_single_activity_series_runs_until_today(self):
         from dashboard.load_model import build_model
 

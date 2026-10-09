@@ -7,9 +7,11 @@ thin CLI wrapper around this module.
 from __future__ import annotations
 
 import math
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from html import escape
 from typing import Any
 
 from scripts.sleep_data import summarize_sleep
@@ -555,14 +557,19 @@ def make_svg(daily: list[dict[str, Any]], summary: dict[str, Any]) -> str:
     return "\n".join(svg)
 
 
+def markdown_text(value: Any) -> str:
+    text = escape(' '.join(str(value).splitlines()))
+    return re.sub(r'([\\`*_\[\]{}()#+.!|~-])', r'\\\1', text)
+
+
 def render_markdown(summary: dict[str, Any], daily: list[dict[str, Any]]) -> str:
     last_activities = []
     for row in daily[-7:]:
         for activity in row["activities"]:
-            line = f"- {row['date']} | {activity['type']} | {activity['name']} | load {activity['estimated_load']}"
+            line = f"- {row['date']} | {markdown_text(activity['type'])} | {markdown_text(activity['name'])} | load {activity['estimated_load']}"
             if activity.get("type") == "Weight Training" and activity.get("hevy_total_sets"):
                 line += (
-                    f" | Hevy: {activity.get('hevy_classification')}, "
+                    f" | Hevy: {markdown_text(activity.get('hevy_classification'))}, "
                     f"{activity.get('hevy_total_sets')} series, "
                     f"{activity.get('hevy_total_volume_kg')} kg, "
                     f"muscular {activity.get('strength_muscular_load')}"

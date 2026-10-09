@@ -60,6 +60,61 @@ class ProviderIsolationTests(unittest.TestCase):
             self.assertNotIn('synthetic', json.dumps(providers.status()))
             self.assertNotIn(b'synthetic', providers.path.read_bytes())
 
+    def test_environment_credentials_are_used_without_saved_configuration(self):
+        env = {
+            'GARMIN_EMAIL': 'synthetic@example.test',
+            'GARMIN_PASSWORD': 'synthetic-password',
+            'HEVY_API_KEY': 'synthetic-key',
+        }
+        instance = Settings.from_env(env)
+        env['HEVY_API_KEY'] = 'changed-after-loading'
+        before = dict(os.environ)
+        with tempfile.TemporaryDirectory() as folder:
+            providers = ProviderSettings(Path(folder))
+            self.assertEqual(
+                providers.credentials('garmin', instance),
+                {'email': 'synthetic@example.test', 'password': 'synthetic-password'},
+            )
+            self.assertEqual(providers.credentials('hevy', instance), {'api_key': 'synthetic-key'})
+            status = {item['id']: item for item in providers.status(instance)}
+            self.assertTrue(status['garmin']['configured'])
+            self.assertTrue(status['hevy']['configured'])
+            self.assertNotIn('synthetic-key', json.dumps(status))
+            self.assertFalse(providers.path.exists())
+        self.assertEqual(dict(os.environ), before)
+
+    def test_saved_credentials_and_disconnect_override_environment(self):
+        instance = Settings.from_env({'HEVY_API_KEY': 'synthetic-environment-key'})
+        with tempfile.TemporaryDirectory() as folder:
+            providers = ProviderSettings(Path(folder))
+            providers.configure('hevy', {'api_key': 'synthetic-ui-key'}, settings=instance)
+            self.assertEqual(providers.credentials('hevy', instance), {'api_key': 'synthetic-ui-key'})
+            providers.configure('hevy', enabled=False, settings=instance)
+            self.assertEqual(providers.credentials('hevy', instance), {})
+            status = next(item for item in providers.status(instance) if item['id'] == 'hevy')
+            self.assertFalse(status['configured'])
+            self.assertFalse(status['enabled'])
+
+    def test_environment_credentials_reach_sync_child_without_environment_writes(self):
+        from dashboard.pipeline import sync_sources
+
+        instance = Settings.from_env({'HEVY_API_KEY': 'synthetic-environment-key'})
+        before = dict(os.environ)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            providers = ProviderSettings(root / 'runtime')
+            with patch('dashboard.pipeline.run_script') as run:
+                sync_sources(
+                    root,
+                    sources=('hevy',),
+                    credentials={'hevy': providers.credentials('hevy', instance)},
+                    enabled={'hevy': providers.enabled('hevy')},
+                    settings=instance,
+                )
+            fetch = next(call for call in run.call_args_list if call.args[0] == 'fetch_hevy_workouts.py')
+            self.assertEqual(fetch.kwargs['environment']['HEVY_API_KEY'], 'synthetic-environment-key')
+        self.assertEqual(dict(os.environ), before)
+
     def test_sync_sources_passes_credentials_only_to_child(self):
         from dashboard.pipeline import sync_sources
 

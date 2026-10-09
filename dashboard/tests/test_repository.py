@@ -142,6 +142,31 @@ class PostgresIntegrationTests(unittest.TestCase):
                 (Path(name) / "data/training_history.json").read_bytes(), files["data/training_history.json"]
             )
 
+    def test_cached_snapshot_reads_post_publication_warnings_from_postgres(self):
+        from psycopg.types.json import Jsonb
+
+        import dashboard.snapshot as snapshot_module
+
+        repo = PostgresRepository()
+        revision = repo.publish(self.fixture('warning-update'), reason='synthetic', expected=repo.active())
+        warning = 'Treinos publicados; backup automatico nao concluido.'
+        with (
+            tempfile.TemporaryDirectory() as name,
+            patch('dashboard.repository.datasets_in_postgres', return_value=True),
+            patch('dashboard.snapshot.datasets_in_postgres', return_value=True),
+            patch.object(snapshot_module, '_build_snapshot', wraps=snapshot_module._build_snapshot) as build,
+        ):
+            root = Path(name)
+            first = snapshot_module.build_snapshot(root)
+            self.assertEqual(first['sync_warnings'], [])
+            with connect() as conn:
+                conn.execute('UPDATE athlete.revisions SET warnings=%s WHERE id=%s', (Jsonb([warning]), revision))
+            second = snapshot_module.build_snapshot(root)
+            self.assertEqual(second['sync_warnings'], [warning])
+            self.assertEqual(second['storage']['revision'], str(revision))
+            self.assertEqual(second['activities'], first['activities'])
+            build.assert_called_once()
+
     def test_conflicting_writer_does_not_overwrite(self):
         repo = PostgresRepository()
         initial = repo.active()

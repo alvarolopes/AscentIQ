@@ -287,7 +287,11 @@ def create_app(runtime: Path | None = None, root: Path = ROOT, settings: Setting
         if payload.text is not None and len(payload.text.strip()) < 20:
             raise HTTPException(400, "Cole o relatório completo antes de salvar.")
         try:
-            return daily_reports.save(prepared, payload.text.strip() if payload.text is not None else None)
+            return daily_reports.save(
+                prepared,
+                payload.text.strip() if payload.text is not None else None,
+                ai=providers.ai_configuration(settings),
+            )
         except ValueError as error:
             raise HTTPException(400, str(error)) from error
         except RuntimeError as error:

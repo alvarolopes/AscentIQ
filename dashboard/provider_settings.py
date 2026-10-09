@@ -51,11 +51,17 @@ class ProviderSettings:
         raw = self.path.read_bytes()
         return json.loads(AESGCM(self.key.read_bytes()).decrypt(raw[:12], raw[12:], b'ascentiq-connections-v1'))
 
-    def credentials(self, provider):
-        saved = self._read().get(provider, {})
-        if not saved.get('enabled', True):
-            return {}
-        return dict(saved.get('credentials', {}))
+    def credentials(self, provider, settings=None):
+        values = self._read()
+        if provider in values:
+            saved = values[provider]
+            return dict(saved.get('credentials', {})) if saved.get('enabled', True) else {}
+        settings = settings or current()
+        fallback = {
+            'garmin': {'email': settings.garmin_email, 'password': settings.garmin_password},
+            'hevy': {'api_key': settings.hevy_api_key},
+        }.get(provider, {})
+        return {key: value for key, value in fallback.items() if value}
 
     def enabled(self, provider):
         return bool(self._read().get(provider, {}).get('enabled', True))
@@ -147,7 +153,7 @@ class ProviderSettings:
                 'name': {'garmin': 'Garmin Connect', 'hevy': 'Hevy', 'ai': 'Inteligência artificial'}[provider],
                 'configured': ai.configured
                 if provider == 'ai'
-                else all(self.credentials(provider).get(key) for key in fields),
+                else all(self.credentials(provider, settings).get(key) for key in fields),
                 'enabled': ai.enabled if provider == 'ai' else self.enabled(provider),
                 **({'provider': ai.provider, 'model': ai.model, 'local': ai.local} if provider == 'ai' else {}),
                 'fields': list(fields),

@@ -1,6 +1,5 @@
 import io
 import json
-import os
 import tempfile
 import unittest
 from datetime import date
@@ -11,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from dashboard import settings
 from dashboard.daily_analysis import DailyReports, ask_llm, prepare
+from dashboard.provider_settings import ProviderSettings
 from dashboard.server import create_app
 from dashboard.settings import Settings
 from dashboard.tests import test_dashboard
@@ -111,14 +111,52 @@ class DailyApiTests(test_dashboard.Fixture):
 
     def setUp(self):
         super().setUp()
+        self.addCleanup(settings.install, settings.current())
         app_settings = Settings.from_env(
-            {**os.environ, "DASHBOARD_PASSWORD": "test-only-password", "DASHBOARD_USERNAME": "alvaro"}
+            {
+                'DASHBOARD_RUNTIME': str(self.root / 'default-runtime'),
+                "DASHBOARD_PASSWORD": "test-only-password",
+                "DASHBOARD_USERNAME": "alvaro",
+                'ASCENTIQ_AI_PROVIDER': 'openai',
+                'OPENAI_MODEL': 'synthetic-default-model',
+                'OPENAI_API_KEY': 'synthetic-default-key',
+            }
         )
         self.client = TestClient(create_app(self.runtime, self.root, app_settings))
 
     def tearDown(self):
         self.client.close()
         super().tearDown()
+
+    def test_generation_uses_the_ai_connection_in_the_app_runtime(self):
+        providers = ProviderSettings(self.runtime)
+        providers.configure('ai', {'provider': 'ollama', 'local_model': 'synthetic-local-model'})
+        self.login()
+        self.save('training_history', [{'date': '2026-09-30', 'type': 'Run', 'distance_km': 8}])
+        url = '/api/daily-analysis/2026-09-30'
+        preview = self.client.get(url).json()
+        with patch('dashboard.daily_analysis.ask_llm', return_value='Análise sintética do treino.') as llm:
+            response = self.client.post(
+                url, json={'fingerprint': preview['fingerprint']}, headers={'X-AscentIQ-Request': '1'}
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['source'], 'ollama')
+        self.assertEqual(response.json()['model'], preview['model'])
+        self.assertEqual(llm.call_args.kwargs['ai'], providers.ai_configuration())
+
+    def test_generation_honors_disconnected_app_ai(self):
+        ProviderSettings(self.runtime).configure('ai', enabled=False)
+        self.login()
+        self.save('training_history', [{'date': '2026-09-30', 'type': 'Run', 'distance_km': 8}])
+        url = '/api/daily-analysis/2026-09-30'
+        preview = self.client.get(url).json()
+        self.assertFalse(preview['configured'])
+        with patch('dashboard.daily_analysis.urlopen') as request:
+            response = self.client.post(
+                url, json={'fingerprint': preview['fingerprint']}, headers={'X-AscentIQ-Request': '1'}
+            )
+        self.assertEqual(response.status_code, 400, response.text)
+        request.assert_not_called()
 
     def test_daily_auth_dates_import_and_stale_input(self):
         url = '/api/daily-analysis/2026-09-30'
