@@ -1,0 +1,41 @@
+---
+name: backend-check
+description: Run the Python backend verification suite (tests, lint, types) exactly as CI does
+allowed-tools:
+  - read
+  - grep
+  - glob
+  - exec
+permissions:
+  allow:
+    - Exec(.venv/Scripts/python.exe)
+    - Exec(git status)
+    - Exec(git diff)
+---
+
+Verify the Python backend in `dashboard/` the same way `.github/workflows/platform.yml` does.
+
+Environment: use the project venv at `.venv/Scripts/python.exe` (create with
+`py -3.14 -m venv .venv` and `pip install -r dashboard/requirements-dev.txt` if missing).
+Always set `PYTHONUTF8=1`. Run from the repository root.
+
+Run, in order, and stop at the first failure:
+
+1. `python -B -m dashboard.tests.empty_installation_smoke`
+2. `python -B -m pytest dashboard/tests tests -q` (falls back to
+   `python -B -m unittest discover -s dashboard/tests -v` and `-s tests -v` if pytest is not installed yet)
+3. `python -m ruff check .` and `python -m ruff format --check .` (skip with a note if ruff is not configured yet)
+4. `python -m mypy dashboard` (skip with a note if mypy is not configured yet)
+
+Rules that apply to every backend change:
+
+- Backend Python is the source of truth for the API. Preserve endpoints, same-origin cookie auth,
+  the `X-AscentIQ-Request` CSRF header, `revision` / `expected_revision` optimistic concurrency,
+  `save_token`, data fingerprints and explicit medical consent flags.
+- Error messages shown to the user are in Brazilian Portuguese; keep existing wording when refactoring.
+- Private data never goes to disk caches, shared caches or logs. In-memory only, keyed by revision.
+- Missing, zero and pending are distinct states; never collapse `None` into `0`.
+- Tests use synthetic data only. Never read `data/*.json` (except `sample_*.json`), `runtime/` or `.env` in tests.
+- Do not touch the running Docker stack (`ascentiq-*` containers) or `compose.override.yaml`.
+
+Report the result of each step verbatim (pass/fail counts, first failing test with traceback).
