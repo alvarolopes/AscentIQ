@@ -40,8 +40,10 @@ jobs:
       - run: ruff format --check .
       - run: mypy
       - run: python -B -m dashboard.tests.empty_installation_smoke
-      - run: pytest
+      - run: python -B -m pytest
       - run: python -B -m dashboard.openapi_export --check
+        env:
+          ASCENTIQ_AUTO_MIGRATE: 'true'
   web:
     runs-on: ubuntu-latest
     steps:

@@ -436,7 +436,7 @@ def build_summary(
     ramp = latest.get("fitness_ramp_rate_7d")
     recovery = build_recovery_summary(sleep, latest["date"])
     return {
-        "generated_at": generated_at.astimezone().isoformat(timespec="seconds"),
+        "generated_at": generated_at.isoformat(timespec="seconds"),
         "latest_date": latest["date"],
         "fitness": latest["fitness"],
         "fatigue": latest["fatigue"],

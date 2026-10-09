@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -42,6 +42,15 @@ class LoadModelRegressionTests(unittest.TestCase):
         from dashboard.load_model import build_model
 
         self.assertIsNone(build_model([], [], None, today=TODAY, generated_at=GENERATED_AT))
+
+    def test_generated_at_preserves_explicit_timezone(self):
+        from dashboard.load_model import build_model
+
+        generated_at = GENERATED_AT.astimezone(UTC)
+        result = build_model(load_fixture('training.json'), [], None, today=TODAY, generated_at=generated_at)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.payload['summary']['generated_at'], '2026-09-30T15:00:00+00:00')
 
     def test_markdown_escapes_untrusted_activity_text_without_changing_payload(self):
         from dashboard.load_model import render_markdown
