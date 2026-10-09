@@ -6,25 +6,45 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+
 from dashboard.server import create_app
+from dashboard.settings import Settings
+from dashboard.tests import pg
 
 
 class ExportArchiveTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def test_explicit_attachments_and_no_credentials(self):
-        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
-                'DATABASE_BACKEND': 'json', 'DASHBOARD_USERNAME': 'tester', 'DASHBOARD_PASSWORD': 'synthetic',
-                'DASHBOARD_SCHEDULE_ENABLED': 'false', 'DASHBOARD_SLEEP_SCHEDULE_ENABLED': 'false'}):
+        with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             (root / 'data').mkdir()
             runtime = root / 'runtime'
             headers = {'X-AscentIQ-Request': '1'}
-            with TestClient(create_app(runtime, root)) as client:
+            app_settings = Settings.from_env(
+                {
+                    **os.environ,
+                    'DASHBOARD_USERNAME': 'tester',
+                    'DASHBOARD_PASSWORD': 'synthetic',
+                    'DASHBOARD_SCHEDULE_ENABLED': 'false',
+                    'DASHBOARD_SLEEP_SCHEDULE_ENABLED': 'false',
+                }
+            )
+            with TestClient(create_app(runtime, root, app_settings)) as client:
                 client.post('/api/auth/login', json={'username': 'tester', 'password': 'synthetic'}, headers=headers)
-                document = client.post('/api/documents', json={'filename': 'synthetic.txt', 'date': '2026-10-01',
-                    'content': base64.b64encode(b'SYNTHETIC ATTACHMENT').decode()}, headers=headers).json()
+                document = client.post(
+                    '/api/documents',
+                    json={
+                        'filename': 'synthetic.txt',
+                        'date': '2026-10-01',
+                        'content': base64.b64encode(b'SYNTHETIC ATTACHMENT').decode(),
+                    },
+                    headers=headers,
+                ).json()
                 (runtime / 'auth-private.txt').write_text('NEVER-EXPORTED-SECRET')
                 default = client.get('/api/export/archive')
                 self.assertEqual(default.status_code, 200)

@@ -1,0 +1,574 @@
+{
+  "summary": {
+    "generated_at": "2026-09-30T12:00:00-03:00",
+    "latest_date": "2026-09-30",
+    "fitness": 15.0,
+    "fatigue": 21.1,
+    "form": -6.1,
+    "fitness_ramp_rate_7d": 0.8,
+    "form_status": "balanced",
+    "ramp_status": "steady",
+    "recovery": {
+      "score": 77,
+      "status": "good",
+      "basis": "daily_sleep",
+      "period": "2026-09-30",
+      "last_scored_date": "2026-09-30",
+      "last_record_date": "2026-09-30",
+      "last_duration_date": "2026-09-30",
+      "duration_minutes": 425,
+      "duration_raw": "7:05",
+      "quality": "good",
+      "resting_hr": 54,
+      "body_battery": 72
+    },
+    "load_last_7_days": 135.7,
+    "load_last_28_days": 860.0,
+    "model_meta": {
+      "resting_hr_used": 54,
+      "max_hr_used": 188,
+      "fitness_time_constant_days": 42,
+      "fatigue_time_constant_days": 7,
+      "ramp_window_days": 7,
+      "load_model": "TRIMP-like athlete load with type multiplier, vertical bonus and Hevy strength muscular load when available"
+    }
+  },
+  "daily_series": [
+    {
+      "date": "2026-09-01",
+      "daily_load": 61.2,
+      "fitness": 1.5,
+      "fatigue": 8.7,
+      "form": -7.3,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-01",
+          "name": "Corrida base sintética",
+          "type": "Run",
+          "classification_hint": null,
+          "duration_min": 45.0,
+          "distance_km": 8.0,
+          "avg_hr": 138.0,
+          "elevation_gain_m": 40.0,
+          "hrr": 0.627,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 60.2,
+          "vertical_bonus": 1.0,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 61.2
+        }
+      ],
+      "fitness_ramp_rate_7d": null
+    },
+    {
+      "date": "2026-09-02",
+      "daily_load": 0,
+      "fitness": 1.4,
+      "fatigue": 7.5,
+      "form": -6.1,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": null
+    },
+    {
+      "date": "2026-09-03",
+      "daily_load": 88.9,
+      "fitness": 3.5,
+      "fatigue": 19.1,
+      "form": -15.6,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-03",
+          "name": "Corrida limiar sintética",
+          "type": "Run",
+          "classification_hint": "limiar",
+          "duration_min": 40.0,
+          "distance_km": 8.5,
+          "avg_hr": 158.0,
+          "elevation_gain_m": 30.0,
+          "hrr": 0.776,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 88.2,
+          "vertical_bonus": 0.8,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 88.9
+        }
+      ],
+      "fitness_ramp_rate_7d": null
+    },
+    {
+      "date": "2026-09-04",
+      "daily_load": 0,
+      "fitness": 3.4,
+      "fatigue": 16.4,
+      "form": -13.0,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": null
+    },
+    {
+      "date": "2026-09-05",
+      "daily_load": 36.3,
+      "fitness": 4.2,
+      "fatigue": 19.2,
+      "form": -15.0,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-05",
+          "name": "Força pernas sintética",
+          "type": "Weight Training",
+          "classification_hint": null,
+          "duration_min": 60.0,
+          "distance_km": null,
+          "avg_hr": null,
+          "elevation_gain_m": 0.0,
+          "hrr": 0.38,
+          "hrr_source": "fallback_by_type",
+          "cardio_load_component": 16.6,
+          "vertical_bonus": 0.0,
+          "strength_muscular_load": 19.7,
+          "estimated_load": 36.3,
+          "hevy_classification": "legs",
+          "hevy_total_sets": 18,
+          "hevy_working_sets": 14,
+          "hevy_total_reps": 140,
+          "hevy_total_volume_kg": 4200.0
+        }
+      ],
+      "fitness_ramp_rate_7d": null
+    },
+    {
+      "date": "2026-09-06",
+      "daily_load": 0,
+      "fitness": 4.1,
+      "fatigue": 16.5,
+      "form": -12.4,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": null
+    },
+    {
+      "date": "2026-09-07",
+      "daily_load": 0,
+      "fitness": 4.0,
+      "fatigue": 14.1,
+      "form": -10.1,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": null
+    },
+    {
+      "date": "2026-09-08",
+      "daily_load": 71.8,
+      "fitness": 5.6,
+      "fatigue": 22.4,
+      "form": -16.7,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-08",
+          "name": "Corrida base sintética 2",
+          "type": "Run",
+          "classification_hint": null,
+          "duration_min": 50.0,
+          "distance_km": 9.0,
+          "avg_hr": 140.0,
+          "elevation_gain_m": 55.0,
+          "hrr": 0.642,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 70.4,
+          "vertical_bonus": 1.4,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 71.8
+        }
+      ],
+      "fitness_ramp_rate_7d": 4.1
+    },
+    {
+      "date": "2026-09-09",
+      "daily_load": 0,
+      "fitness": 5.5,
+      "fatigue": 19.2,
+      "form": -13.7,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 4.1
+    },
+    {
+      "date": "2026-09-10",
+      "daily_load": 59.1,
+      "fitness": 6.8,
+      "fatigue": 24.9,
+      "form": -18.1,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-10",
+          "name": "Pedal sintético",
+          "type": "Bike",
+          "classification_hint": null,
+          "duration_min": 90.0,
+          "distance_km": 40.0,
+          "avg_hr": 125.0,
+          "elevation_gain_m": 300.0,
+          "hrr": 0.53,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 59.1,
+          "vertical_bonus": 0.0,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 59.1
+        }
+      ],
+      "fitness_ramp_rate_7d": 3.3
+    },
+    {
+      "date": "2026-09-11",
+      "daily_load": 0,
+      "fitness": 6.6,
+      "fatigue": 21.3,
+      "form": -14.7,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 3.2
+    },
+    {
+      "date": "2026-09-12",
+      "daily_load": 171.1,
+      "fitness": 10.5,
+      "fatigue": 42.7,
+      "form": -32.2,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-12",
+          "name": "Longão sintético",
+          "type": "Run",
+          "classification_hint": "longao",
+          "duration_min": 105.0,
+          "distance_km": 18.0,
+          "avg_hr": 145.0,
+          "elevation_gain_m": 120.0,
+          "hrr": 0.679,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 168.1,
+          "vertical_bonus": 3.0,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 171.1
+        }
+      ],
+      "fitness_ramp_rate_7d": 6.3
+    },
+    {
+      "date": "2026-09-13",
+      "daily_load": 129.3,
+      "fitness": 13.3,
+      "fatigue": 55.1,
+      "form": -41.7,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-13",
+          "name": "Corrida de rua sintética 10K",
+          "type": "Run",
+          "classification_hint": null,
+          "duration_min": 52.5,
+          "distance_km": 10.0,
+          "avg_hr": 162.0,
+          "elevation_gain_m": 80.0,
+          "hrr": 0.806,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 127.3,
+          "vertical_bonus": 2.0,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 129.3
+        }
+      ],
+      "fitness_ramp_rate_7d": 9.2
+    },
+    {
+      "date": "2026-09-14",
+      "daily_load": 0,
+      "fitness": 13.0,
+      "fatigue": 47.2,
+      "form": -34.2,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 9.0
+    },
+    {
+      "date": "2026-09-15",
+      "daily_load": 28.9,
+      "fitness": 13.4,
+      "fatigue": 44.6,
+      "form": -31.2,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-15",
+          "name": "Força push sintética",
+          "type": "Weight Training",
+          "classification_hint": null,
+          "duration_min": 55.0,
+          "distance_km": null,
+          "avg_hr": null,
+          "elevation_gain_m": 0.0,
+          "hrr": 0.38,
+          "hrr_source": "fallback_by_type",
+          "cardio_load_component": 15.3,
+          "vertical_bonus": 0.0,
+          "strength_muscular_load": 13.7,
+          "estimated_load": 28.9,
+          "hevy_classification": "push",
+          "hevy_total_sets": 15,
+          "hevy_working_sets": 12,
+          "hevy_total_reps": 120,
+          "hevy_total_volume_kg": 2800.0
+        }
+      ],
+      "fitness_ramp_rate_7d": 7.8
+    },
+    {
+      "date": "2026-09-16",
+      "daily_load": 0,
+      "fitness": 13.1,
+      "fatigue": 38.2,
+      "form": -25.1,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 7.6
+    },
+    {
+      "date": "2026-09-17",
+      "daily_load": 31.0,
+      "fitness": 13.5,
+      "fatigue": 37.2,
+      "form": -23.7,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-17",
+          "name": "Corrida regenerativa sintética",
+          "type": "Run",
+          "classification_hint": null,
+          "duration_min": 30.0,
+          "distance_km": 5.0,
+          "avg_hr": 128.0,
+          "elevation_gain_m": 15.0,
+          "hrr": 0.552,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 30.6,
+          "vertical_bonus": 0.4,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 31.0
+        }
+      ],
+      "fitness_ramp_rate_7d": 6.7
+    },
+    {
+      "date": "2026-09-18",
+      "daily_load": 0,
+      "fitness": 13.2,
+      "fatigue": 31.9,
+      "form": -18.7,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 6.6
+    },
+    {
+      "date": "2026-09-19",
+      "daily_load": 0,
+      "fitness": 12.9,
+      "fatigue": 27.3,
+      "form": -14.5,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 2.4
+    },
+    {
+      "date": "2026-09-20",
+      "daily_load": 41.8,
+      "fitness": 13.6,
+      "fatigue": 29.4,
+      "form": -15.8,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-20",
+          "name": "Corrida sem FC sintética",
+          "type": "Run",
+          "classification_hint": null,
+          "duration_min": 45.0,
+          "distance_km": 8.0,
+          "avg_hr": null,
+          "elevation_gain_m": 45.0,
+          "hrr": 0.52,
+          "hrr_source": "fallback_by_type",
+          "cardio_load_component": 40.6,
+          "vertical_bonus": 1.1,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 41.8
+        }
+      ],
+      "fitness_ramp_rate_7d": 0.3
+    },
+    {
+      "date": "2026-09-21",
+      "daily_load": 0,
+      "fitness": 13.2,
+      "fatigue": 25.2,
+      "form": -12.0,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 0.2
+    },
+    {
+      "date": "2026-09-22",
+      "daily_load": 66.1,
+      "fitness": 14.5,
+      "fatigue": 31.0,
+      "form": -16.5,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-22",
+          "name": "Corrida base sintética 3",
+          "type": "Run",
+          "classification_hint": null,
+          "duration_min": 47.5,
+          "distance_km": 8.5,
+          "avg_hr": 139.0,
+          "elevation_gain_m": 38.0,
+          "hrr": 0.634,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 65.2,
+          "vertical_bonus": 0.9,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 66.1
+        }
+      ],
+      "fitness_ramp_rate_7d": 1.1
+    },
+    {
+      "date": "2026-09-23",
+      "daily_load": 0,
+      "fitness": 14.2,
+      "fatigue": 26.6,
+      "form": -12.4,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 1.1
+    },
+    {
+      "date": "2026-09-24",
+      "daily_load": 0,
+      "fitness": 13.8,
+      "fatigue": 22.8,
+      "form": -9.0,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 0.3
+    },
+    {
+      "date": "2026-09-25",
+      "daily_load": 7.0,
+      "fitness": 13.7,
+      "fatigue": 20.5,
+      "form": -6.9,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-25",
+          "name": "Caminhada sintética",
+          "type": "Walk",
+          "classification_hint": null,
+          "duration_min": 60.0,
+          "distance_km": 6.0,
+          "avg_hr": null,
+          "elevation_gain_m": 0.0,
+          "hrr": 0.28,
+          "hrr_source": "fallback_by_type",
+          "cardio_load_component": 7.0,
+          "vertical_bonus": 0.0,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 7.0
+        }
+      ],
+      "fitness_ramp_rate_7d": 0.5
+    },
+    {
+      "date": "2026-09-26",
+      "daily_load": 0,
+      "fitness": 13.3,
+      "fatigue": 17.6,
+      "form": -4.3,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 0.4
+    },
+    {
+      "date": "2026-09-27",
+      "daily_load": 128.7,
+      "fitness": 16.1,
+      "fatigue": 33.5,
+      "form": -17.4,
+      "activity_count": 1,
+      "activities": [
+        {
+          "date": "2026-09-27",
+          "name": "Prova simulada sintética",
+          "type": "Run",
+          "classification_hint": null,
+          "duration_min": 55.0,
+          "distance_km": 10.0,
+          "avg_hr": 160.0,
+          "elevation_gain_m": 60.0,
+          "hrr": 0.791,
+          "hrr_source": "avg_hr",
+          "cardio_load_component": 127.2,
+          "vertical_bonus": 1.5,
+          "strength_muscular_load": 0.0,
+          "estimated_load": 128.7
+        }
+      ],
+      "fitness_ramp_rate_7d": 2.5
+    },
+    {
+      "date": "2026-09-28",
+      "daily_load": 0,
+      "fitness": 15.7,
+      "fatigue": 28.7,
+      "form": -13.0,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 2.5
+    },
+    {
+      "date": "2026-09-29",
+      "daily_load": 0,
+      "fitness": 15.3,
+      "fatigue": 24.6,
+      "form": -9.3,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 0.8
+    },
+    {
+      "date": "2026-09-30",
+      "daily_load": 0,
+      "fitness": 15.0,
+      "fatigue": 21.1,
+      "form": -6.1,
+      "activity_count": 0,
+      "activities": [],
+      "fitness_ramp_rate_7d": 0.8
+    }
+  ],
+  "model_notes": [
+    "Modelo inspirado em CTL/ATL/TSB, mas calculado localmente com carga estimada do atleta.",
+    "Fitness usa constante de 42 dias; Fatigue usa constante de 7 dias.",
+    "Form negativo indica fadiga acima da base cronica; Form positivo indica mais frescor."
+  ]
+}

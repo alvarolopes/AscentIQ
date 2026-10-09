@@ -3,6 +3,7 @@
 Client filenames are metadata only. All original paths are generated from digests;
 no importer accepts a local path. Operational state is transactionally versioned.
 """
+
 from __future__ import annotations
 
 import base64
@@ -17,17 +18,31 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
-from dashboard.repository import operational_db, read_dataset
+from psycopg.types.json import Jsonb
+
+from dashboard.repository import operational_db, operational_lock, read_dataset
 
 MAX_BYTES = 12 * 1024 * 1024
 MAX_ROWS = 10000
 MAX_POINTS = 100000
-FIELDS = ("date", "date_time", "type", "name", "duration_seconds", "distance_km",
-          "elevation_gain_m", "avg_hr", "max_hr", "calories", "moving_time_seconds",
-          "hevy_workout_id", "garmin_activity_id")
+FIELDS = (
+    "date",
+    "date_time",
+    "type",
+    "name",
+    "duration_seconds",
+    "distance_km",
+    "elevation_gain_m",
+    "avg_hr",
+    "max_hr",
+    "calories",
+    "moving_time_seconds",
+    "hevy_workout_id",
+    "garmin_activity_id",
+)
 NAMESPACE = uuid.UUID("94232e91-10f7-4b2b-97b6-d6f01146c4a3")
 
 
@@ -36,7 +51,7 @@ def _canonical(value):
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _uid(value):
@@ -128,10 +143,16 @@ def _csv_records(raw):
         modality = str(row.get("type") or "").strip()
         if not modality or len(modality) > 80:
             raise ValueError(f"Modalidade inválida na linha {ordinal}.")
-        record = {"id": _uid("csv:" + external_id), "external_id": external_id,
-                  "format": "csv", "date": day, "date_time": stamp, "type": modality,
-                  "name": str(row.get("name")).strip()[:300] if row.get("name") else None,
-                  "duration_seconds": _number(row.get("duration_seconds"), "duration_seconds", required=True)}
+        record = {
+            "id": _uid("csv:" + external_id),
+            "external_id": external_id,
+            "format": "csv",
+            "date": day,
+            "date_time": stamp,
+            "type": modality,
+            "name": str(row.get("name")).strip()[:300] if row.get("name") else None,
+            "duration_seconds": _number(row.get("duration_seconds"), "duration_seconds", required=True),
+        }
         for field in ("distance_km", "elevation_gain_m", "avg_hr", "max_hr", "calories"):
             record[field] = _number(row.get(field), field)
         records.append(record)
@@ -152,7 +173,7 @@ def _distance(a, b):
 
 
 def _gpx_routes(raw):
-    if re.search(br"<!\s*(DOCTYPE|ENTITY)", raw, re.I):
+    if re.search(rb"<!\s*(DOCTYPE|ENTITY)", raw, re.I):
         raise ValueError("GPX não aceita DTD nem entidades externas.")
     try:
         document = ET.fromstring(raw)
@@ -196,12 +217,25 @@ def _gpx_routes(raw):
                 raise ValueError("GPX excede o limite de pontos.")
     if len(points) < 2:
         raise ValueError("GPX requer ao menos dois pontos de percurso.")
-    name = next((element.text for element in document.iter() if _local(element.tag) == "name" and element.text), "Percurso importado")
+    name = next(
+        (element.text for element in document.iter() if _local(element.tag) == "name" and element.text),
+        "Percurso importado",
+    )
     digest = hashlib.sha256(raw).hexdigest()
-    return [], [{"id": _uid("gpx:" + digest), "name": name[:300], "format": "gpx", "kind": "route",
-                 "execution_evidence": False, "distance_km": round(distance / 1000, 4),
-                 "elevation_gain_m": round(ascent, 1) if has_elevation else None,
-                 "elevation_method": "sum_positive_deltas_no_smoothing", "point_count": len(points), "points": points}]
+    return [], [
+        {
+            "id": _uid("gpx:" + digest),
+            "name": name[:300],
+            "format": "gpx",
+            "kind": "route",
+            "execution_evidence": False,
+            "distance_km": round(distance / 1000, 4),
+            "elevation_gain_m": round(ascent, 1) if has_elevation else None,
+            "elevation_method": "sum_positive_deltas_no_smoothing",
+            "point_count": len(points),
+            "points": points,
+        }
+    ]
 
 
 def _fit_records(raw):
@@ -213,8 +247,9 @@ def _fit_records(raw):
         raise ValueError("Leitura FIT indisponível; instale as dependências publicadas do projeto.") from exc
     sessions, identity = [], {}
     try:
-        with fitdecode.FitReader(io.BytesIO(raw), check_crc=fitdecode.CrcCheck.RAISE,
-                                 error_handling=fitdecode.ErrorHandling.RAISE) as reader:
+        with fitdecode.FitReader(
+            io.BytesIO(raw), check_crc=fitdecode.CrcCheck.RAISE, error_handling=fitdecode.ErrorHandling.RAISE
+        ) as reader:
             for frame in reader:
                 if isinstance(frame, fitdecode.FitDataMessage):
                     values = {field.name: field.value for field in frame.fields}
@@ -237,12 +272,23 @@ def _fit_records(raw):
         duration = session.get("total_elapsed_time")
         if duration is None:
             duration = session.get("total_timer_time")
-        record = {"id": _uid("fit:" + external), "external_id": external, "format": "fit",
-                  "date": day, "date_time": stamp, "type": modality, "name": modality,
-                  "duration_seconds": _number(duration, "duration_seconds", required=True),
-                  "moving_time_seconds": _number(session.get("total_timer_time"), "moving_time_seconds")}
-        for field, original in (("elevation_gain_m", "total_ascent"), ("avg_hr", "avg_heart_rate"),
-                                ("max_hr", "max_heart_rate"), ("calories", "total_calories")):
+        record = {
+            "id": _uid("fit:" + external),
+            "external_id": external,
+            "format": "fit",
+            "date": day,
+            "date_time": stamp,
+            "type": modality,
+            "name": modality,
+            "duration_seconds": _number(duration, "duration_seconds", required=True),
+            "moving_time_seconds": _number(session.get("total_timer_time"), "moving_time_seconds"),
+        }
+        for field, original in (
+            ("elevation_gain_m", "total_ascent"),
+            ("avg_hr", "avg_heart_rate"),
+            ("max_hr", "max_heart_rate"),
+            ("calories", "total_calories"),
+        ):
             record[field] = _number(session.get(original), field)
         distance = _number(session.get("total_distance"), "total_distance")
         record["distance_km"] = distance / 1000 if distance is not None else None
@@ -262,34 +308,55 @@ class ImportService:
         self.originals.mkdir(parents=True, exist_ok=True)
         if not self.originals.resolve().is_relative_to(self.runtime.resolve()):
             raise ValueError("Diretório de originais fora do ambiente privado.")
-        with operational_db(self.runtime, "imports", self.root) as conn:
-            conn.execute("CREATE TABLE IF NOT EXISTS personal_imports_state (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
 
     @staticmethod
     def _empty():
-        return {"schema_version": 1, "revision": 0, "imports": [], "records": {}, "routes": {}, "links": [], "distinct_pairs": []}
+        return {
+            "schema_version": 1,
+            "revision": 0,
+            "imports": [],
+            "records": {},
+            "routes": {},
+            "links": [],
+            "distinct_pairs": [],
+        }
 
     def _load(self, conn):
-        row = conn.execute("SELECT payload FROM personal_imports_state WHERE id=?", ("state",)).fetchone()
-        return json.loads(row[0]) if row else self._empty()
+        row = conn.execute("SELECT payload FROM personal_imports_state WHERE id=%s", ("state",)).fetchone()
+        return row[0] if row else self._empty()
 
     def _save(self, conn, state, event):
         state["revision"] += 1
         event = {**event, "revision": state["revision"], "recorded_at": _now()}
-        conn.execute("INSERT INTO personal_imports_state(id,payload) VALUES(?,?)",
-                     (f"revision:{state['revision']:010d}", _canonical(event)))
-        conn.execute("INSERT INTO personal_imports_state(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
-                     ("state", _canonical(state)))
+        conn.execute(
+            "INSERT INTO personal_imports_state(id,payload) VALUES(%s,%s)",
+            (f"revision:{state['revision']:010d}", Jsonb(event)),
+        )
+        conn.execute(
+            "INSERT INTO personal_imports_state(id,payload) VALUES(%s,%s) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
+            ("state", Jsonb(state)),
+        )
 
     def _legacy(self):
         result = {}
         for index, row in enumerate(read_dataset(self.root, "data/training_history.json", []) or []):
             legacy_id = str(row.get("garmin_activity_id") or row.get("activity_key") or f"local-{index}")
             rid = "legacy:" + legacy_id
-            record = {**row, "id": rid, "legacy_id": legacy_id, "format": "legacy",
-                      "duration_seconds": _duration(row.get("duration_seconds") if row.get("duration_seconds") is not None else row.get("elapsed_time")),
-                      "elevation_gain_m": row.get("official_elevation_gain_m") if row.get("official_elevation_gain_m") is not None else row.get("watch_elevation_gain_m"),
-                      "sources": [{"format": "legacy", "external_id": legacy_id, "source": row.get("source"), "record_id": rid}]}
+            record = {
+                **row,
+                "id": rid,
+                "legacy_id": legacy_id,
+                "format": "legacy",
+                "duration_seconds": _duration(
+                    row.get("duration_seconds") if row.get("duration_seconds") is not None else row.get("elapsed_time")
+                ),
+                "elevation_gain_m": row.get("official_elevation_gain_m")
+                if row.get("official_elevation_gain_m") is not None
+                else row.get("watch_elevation_gain_m"),
+                "sources": [
+                    {"format": "legacy", "external_id": legacy_id, "source": row.get("source"), "record_id": rid}
+                ],
+            }
             result[rid] = record
         return result
 
@@ -298,7 +365,12 @@ class ImportService:
         if format not in {"csv", "gpx", "fit"}:
             raise ValueError("Formato aceito: csv, gpx ou fit.")
         filename = str(filename or "")
-        if not filename or len(filename) > 200 or any(x in filename for x in ("/", "\\", ":", "\x00")) or filename in {".", ".."}:
+        if (
+            not filename
+            or len(filename) > 200
+            or any(x in filename for x in ("/", "\\", ":", "\x00"))
+            or filename in {".", ".."}
+        ):
             raise ValueError("Nome de arquivo inválido; não forneça caminhos.")
         if not filename.lower().endswith("." + format):
             raise ValueError("Extensão deve corresponder ao formato informado.")
@@ -317,8 +389,8 @@ class ImportService:
             raise ValueError("Arquivo vazio ou acima do limite de tamanho.")
         digest = hashlib.sha256(raw).hexdigest()
         import_id = _uid(format + ":" + digest)
-        with operational_db(self.runtime, "imports", self.root) as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with operational_db() as conn:
+            operational_lock(conn)
             state = self._load(conn)
             prior = next((item for item in state["imports"] if item["id"] == import_id), None)
             if prior:
@@ -328,7 +400,9 @@ class ImportService:
             for record in records:
                 previous = state["records"].get(record["id"], {})
                 if previous.get("date_time") and previous.get("date") != record["date"] and not record.get("date_time"):
-                    raise ValueError("Ao corrigir a data de uma atividade com horário conhecido, informe também o novo horário.")
+                    raise ValueError(
+                        "Ao corrigir a data de uma atividade com horário conhecido, informe também o novo horário."
+                    )
             original = self.originals / (digest + "." + format)
             if original.exists():
                 if original.is_symlink() or hashlib.sha256(original.read_bytes()).hexdigest() != digest:
@@ -340,20 +414,40 @@ class ImportService:
             for record in records:
                 rid = record["id"]
                 previous = state["records"].get(rid, {})
-                source = {"import_id": import_id, "record_id": rid, "format": format, "external_id": record["external_id"],
-                          "sha256": digest, "filename": filename, "received_at": observed_at,
-                          "values": {k: record.get(k) for k in FIELDS if _known(record.get(k))}}
+                source = {
+                    "import_id": import_id,
+                    "record_id": rid,
+                    "format": format,
+                    "external_id": record["external_id"],
+                    "sha256": digest,
+                    "filename": filename,
+                    "received_at": observed_at,
+                    "values": {k: record.get(k) for k in FIELDS if _known(record.get(k))},
+                }
                 merged = {**previous, **{k: v for k, v in record.items() if _known(v)}}
                 merged["sources"] = list(previous.get("sources", [])) + [source]
-                merged["field_sources"] = {**previous.get("field_sources", {}), **{k: import_id for k in FIELDS if _known(record.get(k))}}
+                merged["field_sources"] = {
+                    **previous.get("field_sources", {}),
+                    **{k: import_id for k in FIELDS if _known(record.get(k))},
+                }
                 state["records"][rid] = merged
                 changed.append(copy.deepcopy(merged))
             for route in routes:
                 route["sources"] = [{"import_id": import_id, "sha256": digest, "filename": filename, "format": format}]
                 state["routes"][route["id"]] = route
-            receipt = {"id": import_id, "format": format, "filename": filename, "sha256": digest, "bytes": len(raw),
-                       "status": "complete", "imported_at": observed_at, "record_ids": [r["id"] for r in records],
-                       "route_ids": [r["id"] for r in routes], "activity_count": len(records), "route_count": len(routes)}
+            receipt = {
+                "id": import_id,
+                "format": format,
+                "filename": filename,
+                "sha256": digest,
+                "bytes": len(raw),
+                "status": "complete",
+                "imported_at": observed_at,
+                "record_ids": [r["id"] for r in records],
+                "route_ids": [r["id"] for r in routes],
+                "activity_count": len(records),
+                "route_count": len(routes),
+            }
             state["imports"].append(receipt)
             self._save(conn, state, {"operation": "import", "receipt": receipt, "records": changed, "routes": routes})
             return {**self._view(state), "import": receipt, "repeated": False}
@@ -374,7 +468,7 @@ class ImportService:
                 primary, secondary = find(a), find(b)
                 if primary != secondary:
                     parent[secondary] = primary
-        groups = {}
+        groups: dict = {}
         for rid in all_records:
             groups.setdefault(find(rid), []).append(rid)
         records, suppressed = [], []
@@ -389,16 +483,24 @@ class ImportService:
                 if options:
                     result[field], field_sources[field] = options[0][1], options[0][0]
                     origin_id = options[0][0]
-                    observation_sources[field] = {"record_id": origin_id,
-                                                  "import_id": all_records[origin_id].get("field_sources", {}).get(field)}
+                    observation_sources[field] = {
+                        "record_id": origin_id,
+                        "import_id": all_records[origin_id].get("field_sources", {}).get(field),
+                    }
                     if len({_canonical(value) for _, value in options}) > 1:
                         conflicts[field] = [{"record_id": rid, "value": value} for rid, value in options]
             for rid in order:
                 sources.extend(copy.deepcopy(all_records[rid].get("sources", [])))
-            result.update(id=primary, kind=_kind(result.get("type")), linked_record_ids=order, sources=sources,
-                          field_sources=field_sources, conflicts=conflicts,
-                          field_observation_sources=observation_sources,
-                          legacy_refs=[legacy[rid]["legacy_id"] for rid in members if rid in legacy])
+            result.update(
+                id=primary,
+                kind=_kind(result.get("type")),
+                linked_record_ids=order,
+                sources=sources,
+                field_sources=field_sources,
+                conflicts=conflicts,
+                field_observation_sources=observation_sources,
+                legacy_refs=[legacy[rid]["legacy_id"] for rid in members if rid in legacy],
+            )
             result["name"] = result.get("name") or result.get("type") or "Atividade importada"
             result["watch_elevation_gain_m"] = result.get("elevation_gain_m")
             seconds = result.get("duration_seconds")
@@ -409,9 +511,9 @@ class ImportService:
             result["source"] = "+".join(sorted({str(x.get("source") or x.get("format")) for x in sources}))
             records.append(result)
             suppressed.extend(result["legacy_refs"])
-        candidates = []
+        candidates: list = []
         visible = [*records, *[row for rid, row in legacy.items() if legacy[rid]["legacy_id"] not in suppressed]]
-        buckets = {}
+        buckets: dict = {}
         for row in visible:
             buckets.setdefault((row.get("date"), _kind(row.get("type"))), []).append(row)
         truncated = False
@@ -420,31 +522,47 @@ class ImportService:
             for index, left in enumerate(bucket):
                 if left["id"].startswith("legacy:"):
                     continue
-                for right in bucket[index + 1:]:
+                for right in bucket[index + 1 :]:
                     if tuple(sorted((left["id"], right["id"]))) in distinct_pairs:
                         continue
                     a, b = left.get("duration_seconds"), right.get("duration_seconds")
-                    if a is not None and b is not None and abs(a - b) > max(300, max(a, b) * .15):
+                    if a is not None and b is not None and abs(a - b) > max(300, max(a, b) * 0.15):
                         continue
                     if len(candidates) >= 2000:
                         truncated = True
                         break
-                    candidates.append({"record_id": left["id"], "other_id": right["id"], "status": "ambiguous",
-                                       "reason": "Mesmo dia e modalidade; conferir horário, duração e origem antes de unir."})
+                    candidates.append(
+                        {
+                            "record_id": left["id"],
+                            "other_id": right["id"],
+                            "status": "ambiguous",
+                            "reason": "Mesmo dia e modalidade; conferir horário, duração e origem antes de unir.",
+                        }
+                    )
                 if truncated:
                     break
             if truncated:
                 break
-        return {"schema_version": 1, "revision": state["revision"], "imports": copy.deepcopy(state["imports"]),
-                "records": sorted(records, key=lambda x: (x.get("date") or "", x.get("date_time") or ""), reverse=True),
-                "routes": list(copy.deepcopy(state["routes"]).values()), "links": copy.deepcopy(state["links"]),
-                "distinct_pairs": copy.deepcopy(state.get("distinct_pairs", [])),
-                "source_records": list(copy.deepcopy(state["records"]).values()),
-                "legacy_candidates": [{k: row.get(k) for k in ("id", "legacy_id", "date", "date_time", "type", "name", "duration_seconds")} for row in legacy.values()],
-                "reconciliation": candidates, "reconciliation_truncated": truncated, "suppressed_legacy_ids": sorted(set(suppressed))}
+        return {
+            "schema_version": 1,
+            "revision": state["revision"],
+            "imports": copy.deepcopy(state["imports"]),
+            "records": sorted(records, key=lambda x: (x.get("date") or "", x.get("date_time") or ""), reverse=True),
+            "routes": list(copy.deepcopy(state["routes"]).values()),
+            "links": copy.deepcopy(state["links"]),
+            "distinct_pairs": copy.deepcopy(state.get("distinct_pairs", [])),
+            "source_records": list(copy.deepcopy(state["records"]).values()),
+            "legacy_candidates": [
+                {k: row.get(k) for k in ("id", "legacy_id", "date", "date_time", "type", "name", "duration_seconds")}
+                for row in legacy.values()
+            ],
+            "reconciliation": candidates,
+            "reconciliation_truncated": truncated,
+            "suppressed_legacy_ids": sorted(set(suppressed)),
+        }
 
     def read(self):
-        with operational_db(self.runtime, "imports", self.root) as conn:
+        with operational_db() as conn:
             state = self._load(conn)
         return self._view(state)
 
@@ -452,8 +570,8 @@ class ImportService:
         action = {"link": "merge", "unmerge": "unlink"}.get(action, action)
         if action not in {"merge", "unlink", "keep"}:
             raise ValueError("Ação deve ser merge, unlink ou keep.")
-        with operational_db(self.runtime, "imports", self.root) as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with operational_db() as conn:
+            operational_lock(conn)
             state = self._load(conn)
             ids = set(state["records"]) | set(self._legacy())
             if record_id not in ids or (other_id is not None and other_id not in ids):
@@ -464,7 +582,10 @@ class ImportService:
                 if record_id not in state["records"] and other_id not in state["records"]:
                     raise ValueError("Este fluxo vincula importações; não altera a consolidação legada.")
                 view = self._view(state)
-                already_linked = any(record_id in row["linked_record_ids"] and other_id in row["linked_record_ids"] for row in view["records"])
+                already_linked = any(
+                    record_id in row["linked_record_ids"] and other_id in row["linked_record_ids"]
+                    for row in view["records"]
+                )
                 pair = sorted((record_id, other_id))
                 distinct = state.setdefault("distinct_pairs", [])
                 if action == "keep":
@@ -481,14 +602,27 @@ class ImportService:
             else:
                 previous = state["links"]
                 if other_id:
-                    state["links"] = [edge for edge in previous if {edge["record_id"], edge["other_id"]} != {record_id, other_id}]
+                    state["links"] = [
+                        edge for edge in previous if {edge["record_id"], edge["other_id"]} != {record_id, other_id}
+                    ]
                 else:
-                    state["links"] = [edge for edge in previous if record_id not in (edge["record_id"], edge["other_id"])]
+                    state["links"] = [
+                        edge for edge in previous if record_id not in (edge["record_id"], edge["other_id"])
+                    ]
                 if state["links"] == previous:
                     return self._view(state)
-            self._save(conn, state, {"operation": "reconcile", "action": action, "record_id": record_id,
-                                     "other_id": other_id, "links": copy.deepcopy(state["links"]),
-                                     "distinct_pairs": copy.deepcopy(state.get("distinct_pairs", []))})
+            self._save(
+                conn,
+                state,
+                {
+                    "operation": "reconcile",
+                    "action": action,
+                    "record_id": record_id,
+                    "other_id": other_id,
+                    "links": copy.deepcopy(state["links"]),
+                    "distinct_pairs": copy.deepcopy(state.get("distinct_pairs", [])),
+                },
+            )
             return self._view(state)
 
     def overlay(self, snapshot):
@@ -498,7 +632,7 @@ class ImportService:
         originals = {str(row.get("id")): row for row in result.get("activities", [])}
         activities = [row for row in result.get("activities", []) if str(row.get("id")) not in suppressed]
         for record in view["records"]:
-            baseline = next((originals[ref] for ref in record["legacy_refs"] if ref in originals), {})
+            baseline: dict = next((originals[ref] for ref in record["legacy_refs"] if ref in originals), {})
             activities.append({**baseline, **record})
         activities.sort(key=lambda x: (x.get("date") or "", x.get("date_time") or ""), reverse=True)
         result["activities"], result["routes"], result["imports"] = activities, view["routes"], view
@@ -506,12 +640,26 @@ class ImportService:
         start, end = week.get("start"), week.get("end") or result.get("as_of")
         if start and end:
             recent = [row for row in activities if start <= (row.get("date") or "") <= end]
-            week.update(activity_count=len(recent), minutes=round(sum(row.get("duration_seconds") or 0 for row in recent) / 60),
-                        running_km=round(sum(row.get("distance_km") or 0 for row in recent if row.get("kind") == "running"), 2),
-                        running_elevation_m=round(sum(row.get("elevation_gain_m") or 0 for row in recent if row.get("kind") == "running")),
-                        by_kind=dict(Counter(row.get("kind") or _kind(row.get("type")) for row in recent)))
+            week.update(
+                activity_count=len(recent),
+                minutes=round(sum(row.get("duration_seconds") or 0 for row in recent) / 60),
+                running_km=round(sum(row.get("distance_km") or 0 for row in recent if row.get("kind") == "running"), 2),
+                running_elevation_m=round(
+                    sum(row.get("elevation_gain_m") or 0 for row in recent if row.get("kind") == "running")
+                ),
+                by_kind=dict(Counter(row.get("kind") or _kind(row.get("type")) for row in recent)),
+            )
         if view["records"]:
-            result.setdefault("freshness", {})["activities"] = max((row.get("date") or "" for row in activities), default=None)
-            result["source_digest"] = hashlib.sha256((str(result.get("source_digest") or "") + _canonical({"records": view["records"], "revision": view["revision"]})).encode()).hexdigest()
-            result.setdefault("performance", {}).setdefault("notes", []).append("Importações pessoais entram no diário; o modelo legado de carga permanece identificado pela versão original até reprocessamento específico.")
+            result.setdefault("freshness", {})["activities"] = max(
+                (row.get("date") or "" for row in activities), default=None
+            )
+            result["source_digest"] = hashlib.sha256(
+                (
+                    str(result.get("source_digest") or "")
+                    + _canonical({"records": view["records"], "revision": view["revision"]})
+                ).encode()
+            ).hexdigest()
+            result.setdefault("performance", {}).setdefault("notes", []).append(
+                "Importações pessoais entram no diário; o modelo legado de carga permanece identificado pela versão original até reprocessamento específico."
+            )
         return result

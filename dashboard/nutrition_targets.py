@@ -1,4 +1,5 @@
 """Daily, versioned local-AI nutrition targets from dated personal context."""
+
 from __future__ import annotations
 
 import hashlib
@@ -10,8 +11,19 @@ import time
 import uuid
 from datetime import timedelta
 
-from dashboard.health import (_active_plan, _effective_values, _goals_for_day, _model, _policy,
-                              _primary_goal, _profile_for_day, _stamp, _today, _weights)
+from dashboard import settings
+from dashboard.health import (
+    _active_plan,
+    _effective_values,
+    _goals_for_day,
+    _model,
+    _policy,
+    _primary_goal,
+    _profile_for_day,
+    _stamp,
+    _today,
+    _weights,
+)
 from dashboard.local_ai import configuration, request_text
 
 METHOD = 'daily_local_ai_targets_v2'
@@ -52,10 +64,17 @@ Não compense refeições, não invente medidas, não diagnostique nem prescreva
 tratamentos. Explique hipóteses e falta de dados. O prazo não justifica restrição
 agressiva. Prefira estabilidade a mudanças grandes em um único dia.'''
 
-SCHEMA = {'type': 'object', 'required': ['energy_adjustment_pct', 'protein_g_per_kg', 'fat_energy_fraction', 'reason', 'limitations'],
-          'properties': {'energy_adjustment_pct': {'type': 'number'}, 'protein_g_per_kg': {'type': 'number'},
-                         'fat_energy_fraction': {'type': 'number'},
-                         'reason': {'type': 'string'}, 'limitations': {'type': 'array', 'items': {'type': 'string'}}}}
+SCHEMA = {
+    'type': 'object',
+    'required': ['energy_adjustment_pct', 'protein_g_per_kg', 'fat_energy_fraction', 'reason', 'limitations'],
+    'properties': {
+        'energy_adjustment_pct': {'type': 'number'},
+        'protein_g_per_kg': {'type': 'number'},
+        'fat_energy_fraction': {'type': 'number'},
+        'reason': {'type': 'string'},
+        'limitations': {'type': 'array', 'items': {'type': 'string'}},
+    },
+}
 
 
 def context_for(health, snapshot, day):
@@ -67,125 +86,222 @@ def context_for(health, snapshot, day):
     activities = []
     for row in snapshot.get('activities', []):
         if start <= str(row.get('date') or '')[:10] <= day.isoformat():
-            activities.append({key: row.get(key) for key in ('id', 'date', 'kind', 'duration_seconds', 'distance_km', 'elevation_gain_m')})
+            activities.append(
+                {
+                    key: row.get(key)
+                    for key in ('id', 'date', 'kind', 'duration_seconds', 'distance_km', 'elevation_gain_m')
+                }
+            )
     activities.sort(key=lambda row: (str(row['date']), str(row['id'])))
     weekly = [row for row in activities if row['date'][:10] >= (day - timedelta(days=6)).isoformat()]
-    minutes = sum(row['duration_seconds'] for row in weekly
-                  if isinstance(row.get('duration_seconds'), (int, float)) and math.isfinite(row['duration_seconds']) and row['duration_seconds'] > 0) / 60
+    minutes = (
+        sum(
+            row['duration_seconds']
+            for row in weekly
+            if isinstance(row.get('duration_seconds'), (int, float))
+            and math.isfinite(row['duration_seconds'])
+            and row['duration_seconds'] > 0
+        )
+        / 60
+    )
     factor = prefs.get('activity_factor')
     inferred_factor = factor is None
     if factor is None:
         factor = 1.4 if minutes < 90 else 1.55 if minutes < 240 else 1.7 if minutes < 420 else 1.85
     reference = _model(profile, {**prefs, 'activity_factor': factor}, day)
     if reference and inferred_factor:
-        reference['assumptions'] = [text.replace('fator de atividade declarado', 'fator de atividade estimado pelo volume registrado')
-                                    for text in reference['assumptions']]
+        reference['assumptions'] = [
+            text.replace('fator de atividade declarado', 'fator de atividade estimado pelo volume registrado')
+            for text in reference['assumptions']
+        ]
     missing = []
     if not profile.get('weight_kg'):
         missing.append('peso atual')
     if reference is None:
-        if not profile.get('height_cm'): missing.append('altura')
-        if profile.get('sex') not in ('male', 'female'): missing.append('sexo para o cálculo metabólico')
-        if not (profile.get('age') or profile.get('birth_date')): missing.append('idade ou data de nascimento')
+        if not profile.get('height_cm'):
+            missing.append('altura')
+        if profile.get('sex') not in ('male', 'female'):
+            missing.append('sexo para o cálculo metabólico')
+        if not (profile.get('age') or profile.get('birth_date')):
+            missing.append('idade ou data de nascimento')
     if not goal:
         missing.append('objetivo ativo')
     policy = _policy(prefs)
-    checks = [row for row in state['checkins'] if (day - timedelta(days=2)).isoformat() <= row['date'] <= day.isoformat()]
-    recovery_alert = any(row.get('illness') is True or any(isinstance(row.get(key), (int, float)) and row[key] >= 8
-                         for key in ('fatigue', 'pain')) for row in checks)
+    checks = [
+        row for row in state['checkins'] if (day - timedelta(days=2)).isoformat() <= row['date'] <= day.isoformat()
+    ]
+    recovery_alert = any(
+        row.get('illness') is True
+        or any(isinstance(row.get(key), (int, float)) and row[key] >= 8 for key in ('fatigue', 'pain'))
+        for row in checks
+    )
     lower_adjustment = 0 if recovery_alert else -min(0.15, policy['max_planned_deficit_pct'])
     weights = _weights(state, snapshot, day)
-    def goal_context(row):
-        return {key: row[key] for key in ('id', 'type', 'description', 'priority', 'due_date',
-                                         'target_value', 'desired_weekly_change_kg', 'preserve') if key in row}
 
-    context = {'method': METHOD, 'prompt_revision': 3, 'date': day.isoformat(), 'profile': {k: profile.get(k) for k in
-               ('age', 'birth_date', 'sex', 'height_cm', 'weight_kg', 'weight_reference_date')},
-               'goal': goal_context(goal) if goal else None,
-               'active_goals': [goal_context(g) for g in _goals_for_day(state, day) if g.get('status') == 'active'],
-               'activities_14_days': activities,
-               'activities_today': [row for row in activities if str(row['date'])[:10] == day.isoformat()],
-               'weight_history_30_days': [{'date': row['date'], 'weight_kg': row['weight_kg']}
-                                         for row in weights if row['date'] >= (day - timedelta(days=29)).isoformat()],
-               'interpretation': {'goal_effective_from': 'Vigência do objetivo; não é data de evento.',
-                                  'energy_reference': 'Estimativa; não calibrada por ingestão e evolução do peso.',
-                                  'outside_training_activity': 'Não medida.',
-                                  'carbohydrates': 'Energia restante após proteína e gordura; validar com treino e recuperação.'},
-               'activity_reference': {'sessions_7_days': len(weekly), 'minutes_7_days': round(minutes),
-                                      'activity_factor': factor, 'factor_inferred': inferred_factor},
-               'energy_reference': reference, 'recovery_checkins': checks,
-               'limits': {'min_adjustment': lower_adjustment, 'max_adjustment': 0.10,
-                          'min_target_kcal': policy['min_target_kcal'], 'protein_g_per_kg': [1.4, 2.0],
-                          'fat_energy_fraction': [0.25, 0.30]}}
-    fingerprint = hashlib.sha256(json.dumps(context, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+    def goal_context(row):
+        return {
+            key: row[key]
+            for key in (
+                'id',
+                'type',
+                'description',
+                'priority',
+                'due_date',
+                'target_value',
+                'desired_weekly_change_kg',
+                'preserve',
+            )
+            if key in row
+        }
+
+    context = {
+        'method': METHOD,
+        'prompt_revision': 3,
+        'date': day.isoformat(),
+        'profile': {
+            k: profile.get(k) for k in ('age', 'birth_date', 'sex', 'height_cm', 'weight_kg', 'weight_reference_date')
+        },
+        'goal': goal_context(goal) if goal else None,
+        'active_goals': [goal_context(g) for g in _goals_for_day(state, day) if g.get('status') == 'active'],
+        'activities_14_days': activities,
+        'activities_today': [row for row in activities if str(row['date'])[:10] == day.isoformat()],
+        'weight_history_30_days': [
+            {'date': row['date'], 'weight_kg': row['weight_kg']}
+            for row in weights
+            if row['date'] >= (day - timedelta(days=29)).isoformat()
+        ],
+        'interpretation': {
+            'goal_effective_from': 'Vigência do objetivo; não é data de evento.',
+            'energy_reference': 'Estimativa; não calibrada por ingestão e evolução do peso.',
+            'outside_training_activity': 'Não medida.',
+            'carbohydrates': 'Energia restante após proteína e gordura; validar com treino e recuperação.',
+        },
+        'activity_reference': {
+            'sessions_7_days': len(weekly),
+            'minutes_7_days': round(minutes),
+            'activity_factor': factor,
+            'factor_inferred': inferred_factor,
+        },
+        'energy_reference': reference,
+        'recovery_checkins': checks,
+        'limits': {
+            'min_adjustment': lower_adjustment,
+            'max_adjustment': 0.10,
+            'min_target_kcal': policy['min_target_kcal'],
+            'protein_g_per_kg': [1.4, 2.0],
+            'fat_energy_fraction': [0.25, 0.30],
+        },
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(context, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()
+    ).hexdigest()
     return state, context, fingerprint, missing
 
 
 class NutritionTargets:
-    def __init__(self, health, snapshot):
+    def __init__(self, health, snapshot, providers=None):
         self.health, self.snapshot = health, snapshot
+        self._providers = providers
         self.lock = threading.Lock()
         self.wake, self.stop = threading.Event(), threading.Event()
-        self.thread = None
+        self.thread: threading.Thread | None = None
         self.status, self.message, self.missing = 'waiting', '', []
-        self.last_attempt = 0
+        self.last_attempt = 0.0
         self.attempt_fingerprint = None
 
     def view(self, day):
         state = self.health.read()
         plan = _active_plan(state, day)
         enabled = state['preferences'].get('auto_nutrition_targets', True)
-        return {'status': self.status if enabled else 'paused', 'message': self.message,
-                'missing_fields': self.missing, 'automatic': enabled,
-                'kcal': plan.get('target_kcal') if plan else None,
-                **{key: plan.get(key) if plan else None for key in ('protein_g', 'carbs_g', 'fat_g')},
-                'goal_id': plan.get('goal_id') if plan else None,
-                'updated_at': plan.get('created_at') if plan else None,
-                'effective_from': plan.get('effective_from') if plan else None,
-                'source': plan.get('source') if plan else None,
-                'reason': plan.get('reason') if plan else None,
-                'limitations': plan.get('limitations', []) if plan else []}
+        return {
+            'status': self.status if enabled else 'paused',
+            'message': self.message,
+            'missing_fields': self.missing,
+            'automatic': enabled,
+            'kcal': plan.get('target_kcal') if plan else None,
+            **{key: plan.get(key) if plan else None for key in ('protein_g', 'carbs_g', 'fat_g')},
+            'goal_id': plan.get('goal_id') if plan else None,
+            'updated_at': plan.get('created_at') if plan else None,
+            'effective_from': plan.get('effective_from') if plan else None,
+            'source': plan.get('source') if plan else None,
+            'reason': plan.get('reason') if plan else None,
+            'limitations': plan.get('limitations', []) if plan else [],
+        }
 
     def refresh(self, day=None, *, force=False):
-        if not self.lock.acquire(blocking=False): return
+        if not self.lock.acquire(blocking=False):
+            return
         try:
             state = self.health.read()
             if not state['preferences'].get('auto_nutrition_targets', True):
-                self.status = 'paused'; return
+                self.status = 'paused'
+                return
             day = day or _today(state['preferences'])
             if day != _today(state['preferences']):
                 raise ValueError('Metas automáticas só podem ser geradas para o dia atual.')
             snap = self.snapshot()
             state, context, fingerprint, self.missing = context_for(self.health, snap, day)
             if self.missing:
-                self.status, self.message = 'missing_data', 'Complete o perfil para gerar a meta: ' + ', '.join(self.missing) + '.'
+                self.status, self.message = (
+                    'missing_data',
+                    'Complete o perfil para gerar a meta: ' + ', '.join(self.missing) + '.',
+                )
                 return
             current = _active_plan(state, day)
             if current and current.get('nutrition_fingerprint') == fingerprint:
-                self.status, self.message = 'ready', ''; return
-            config = configuration()
+                self.status, self.message = 'ready', ''
+                return
+            if self._providers is not None:
+                ai = self._providers.ai_configuration(settings.current())
+            else:
+                from dashboard.provider_settings import default_ai
+
+                ai = default_ai()
+            config = configuration(ai)
             if not config['configured'] or config['provider'] != 'ollama':
-                self.status, self.message = 'unavailable', 'Configure o Ollama local para gerar as metas sem cobrança de API.'
+                self.status, self.message = (
+                    'unavailable',
+                    'Configure o Ollama local para gerar as metas sem cobrança de API.',
+                )
                 return
             if not force and self.attempt_fingerprint == fingerprint and time.monotonic() - self.last_attempt < 300:
                 return
             self.last_attempt, self.attempt_fingerprint = time.monotonic(), fingerprint
             self.status, self.message = 'updating', 'Atualizando a meta com seu peso, objetivo e treinos…'
-            result = json.loads(request_text(INSTRUCTIONS, json.dumps(context, ensure_ascii=False, allow_nan=False), schema=SCHEMA))
+            result = json.loads(
+                request_text(
+                    INSTRUCTIONS, json.dumps(context, ensure_ascii=False, allow_nan=False), ai=ai, schema=SCHEMA
+                )
+            )
             adjustment, protein_ratio = result.get('energy_adjustment_pct'), result.get('protein_g_per_kg')
             fat_fraction = result.get('fat_energy_fraction')
             limits = context['limits']
-            for value, low, high in ((adjustment, limits['min_adjustment'], limits['max_adjustment']),
-                                     (protein_ratio, 1.4, 2.0), (fat_fraction, 0.25, 0.30)):
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
+            for value, low, high in (
+                (adjustment, limits['min_adjustment'], limits['max_adjustment']),
+                (protein_ratio, 1.4, 2.0),
+                (fat_fraction, 0.25, 0.30),
+            ):
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    or not low <= value <= high
+                ):
                     raise ValueError('A IA sugeriu valores fora dos limites; a última meta foi preservada.')
             if not isinstance(result.get('reason'), str) or not 1 <= len(result['reason']) <= 3000:
                 raise ValueError('A IA não explicou a meta; a última meta foi preservada.')
-            if not isinstance(result.get('limitations'), list) or len(result['limitations']) > 20 or any(not isinstance(x, str) or len(x) > 500 for x in result['limitations']):
+            if (
+                not isinstance(result.get('limitations'), list)
+                or len(result['limitations']) > 20
+                or any(not isinstance(x, str) or len(x) > 500 for x in result['limitations'])
+            ):
                 raise ValueError('A IA retornou limitações inválidas; a última meta foi preservada.')
             reference = context['energy_reference']
-            minimum = max(limits['min_target_kcal'], reference.get('resting_kcal') or 0,
-                          reference['total_kcal'] * (1 + limits['min_adjustment']))
+            minimum = max(
+                limits['min_target_kcal'],
+                reference.get('resting_kcal') or 0,
+                reference['total_kcal'] * (1 + limits['min_adjustment']),
+            )
             lower = math.ceil(minimum / 50) * 50
             upper = math.floor(reference['total_kcal'] * (1 + limits['max_adjustment']) / 50) * 50
             if lower > upper:
@@ -196,45 +312,77 @@ class NutritionTargets:
             carbs = round((kcal - protein * 4 - fat * 9) / 4, 1)
             if not 1000 <= kcal <= 10000 or carbs < 0:
                 raise ValueError('Meta incompatível com o perfil; a última meta foi preservada.')
-            explanation = ' '.join(sentence for sentence in re.split(r'(?<=[.!?])\s+', result['reason'])
-                                   if not any(claim in sentence.lower() for claim in
-                                              ('maximiz', 'estabilidade hormonal', 'estresse metabólico')))
-            reason = (f'Referência de gasto estimada ou declarada: {reference["total_kcal"]:.0f} kcal/dia. '
-                      f'Meta: {kcal} kcal/dia (ajuste de {(kcal / reference["total_kcal"] - 1) * 100:+.1f}% sobre a referência). '
-                      f'Proteína: {protein_ratio:g} g/kg; gordura: {fat_fraction * 100:g}% da energia; '
-                      'carboidratos completam o restante. ' + explanation)
+            explanation = ' '.join(
+                sentence
+                for sentence in re.split(r'(?<=[.!?])\s+', result['reason'])
+                if not any(
+                    claim in sentence.lower() for claim in ('maximiz', 'estabilidade hormonal', 'estresse metabólico')
+                )
+            )
+            reason = (
+                f'Referência de gasto estimada ou declarada: {reference["total_kcal"]:.0f} kcal/dia. '
+                f'Meta: {kcal} kcal/dia (ajuste de {(kcal / reference["total_kcal"] - 1) * 100:+.1f}% sobre a referência). '
+                f'Proteína: {protein_ratio:g} g/kg; gordura: {fat_fraction * 100:g}% da energia; '
+                'carboidratos completam o restante. ' + explanation
+            )
             fresh, _, fresh_fingerprint, _ = context_for(self.health, self.snapshot(), day)
             fresh_plan = _active_plan(fresh, day)
-            if (day != _today(fresh['preferences']) or fresh_fingerprint != fingerprint or not fresh['preferences'].get('auto_nutrition_targets', True)
-                    or (fresh_plan or {}).get('id') != (current or {}).get('id')):
+            if (
+                day != _today(fresh['preferences'])
+                or fresh_fingerprint != fingerprint
+                or not fresh['preferences'].get('auto_nutrition_targets', True)
+                or (fresh_plan or {}).get('id') != (current or {}).get('id')
+            ):
                 raise ValueError('Os dados mudaram durante o cálculo. A meta será atualizada novamente.')
             # Missing data are verified here; model prose is not evidence that exams,
             # symptoms or measurements are absent from the person's actual life.
             limitations = list(reference['assumptions']) + [
                 'A adequação da meta não foi validada por ingestão registrada e tendência de peso.',
-                'Carboidratos completam a energia após proteína e gordura; não representam uma necessidade medida.']
+                'Carboidratos completam a energia após proteína e gordura; não representam uma necessidade medida.',
+            ]
             if not context['recovery_checkins']:
                 limitations.append('Não há check-ins de recuperação registrados nos últimos três dias.')
             if len(context['weight_history_30_days']) < 4:
-                limitations.append('Há menos de quatro medidas de peso nos últimos 30 dias; a tendência é insuficiente para calibrar o gasto.')
+                limitations.append(
+                    'Há menos de quatro medidas de peso nos últimos 30 dias; a tendência é insuficiente para calibrar o gasto.'
+                )
             if not any(g.get('due_date') for g in context['active_goals']):
                 limitations.append('Não há prazo explícito nos objetivos ativos para confirmar proximidade de evento.')
             if context['activity_reference']['factor_inferred']:
-                limitations.append('Fator de atividade estimado pelo volume dos últimos sete dias; rotina fora dos treinos não foi medida.')
+                limitations.append(
+                    'Fator de atividade estimado pelo volume dos últimos sete dias; rotina fora dos treinos não foi medida.'
+                )
             weight_date = context['profile'].get('weight_reference_date')
             if weight_date and weight_date < (day - timedelta(days=30)).isoformat():
                 limitations.append('O último peso tem mais de 30 dias. Registre uma medida atual para recalcular.')
-            plan = {'id': uuid.uuid4().hex, 'goal_id': context['goal']['id'], 'target_kcal': kcal,
-                    'protein_g': protein, 'carbs_g': carbs, 'fat_g': fat, 'source': 'ollama', 'model': config['model'],
-                    'method': METHOD, 'effective_from': day.isoformat(),
-                    'next_review_date': (day + timedelta(days=1)).isoformat(), 'reason': reason,
-                    'limitations': limitations, 'baseline_expenditure_kcal': reference['total_kcal'],
-                    'nutrition_fingerprint': fingerprint, 'nutrition_context': context, 'created_at': _stamp()}
+            plan = {
+                'id': uuid.uuid4().hex,
+                'goal_id': context['goal']['id'],
+                'target_kcal': kcal,
+                'protein_g': protein,
+                'carbs_g': carbs,
+                'fat_g': fat,
+                'source': 'ollama',
+                'model': config['model'],
+                'method': METHOD,
+                'effective_from': day.isoformat(),
+                'next_review_date': (day + timedelta(days=1)).isoformat(),
+                'reason': reason,
+                'limitations': limitations,
+                'baseline_expenditure_kcal': reference['total_kcal'],
+                'nutrition_fingerprint': fingerprint,
+                'nutrition_context': context,
+                'created_at': _stamp(),
+            }
             self.health.save('plans', plan, fresh['revision'])
             self.status, self.message = 'ready', ''
         except Exception as error:
             self.status = 'error'
-            self.message = str(error) if isinstance(error, (ValueError, RuntimeError)) else 'Não foi possível atualizar a meta. A última referência foi preservada.'
+            self.message = (
+                str(error)
+                if isinstance(error, (ValueError, RuntimeError))
+                else 'Não foi possível atualizar a meta. A última referência foi preservada.'
+            )
         finally:
             self.lock.release()
 
@@ -247,9 +395,12 @@ class NutritionTargets:
                 self.wake.clear()
                 self.refresh()
                 self.wake.wait(60)
+
         self.thread = threading.Thread(target=loop, name='daily-nutrition-targets', daemon=True)
         self.thread.start()
 
     def close(self):
-        self.stop.set(); self.wake.set()
-        if self.thread: self.thread.join(timeout=5)
+        self.stop.set()
+        self.wake.set()
+        if self.thread:
+            self.thread.join(timeout=5)

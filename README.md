@@ -49,7 +49,7 @@ explica e sugere; as respostas não alteram automaticamente seus registros ou pl
 
 ## Começar do zero
 
-Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preencha duas senhas distintas de banco e mantenha `DATABASE_BACKEND=postgres`. Credenciais Garmin, Hevy e IA são opcionais e podem ser cadastradas no painel.
+Docker Desktop deve estar em execução. Copie `.env.example` para `.env`, preencha duas senhas distintas de banco. Credenciais Garmin, Hevy e IA são opcionais e podem ser cadastradas no painel. A configuração salva no painel tem prioridade sobre as variáveis de ambiente ao iniciar a API.
 
 ```powershell
 docker compose build api frontend web
@@ -83,6 +83,26 @@ docker compose --profile maintenance run --rm db-tools test
 
 Esse comando cria um banco temporário, verifica a instalação vazia e executa as suítes de API, dados, energia, adaptação, importação, concorrência e recuperação. O GitHub Actions executa os testes com PostgreSQL descartável e constrói a UI.
 
+Os testes exigem um PostgreSQL descartável (os testes criam e removem bancos por classe, então o usuário precisa de `CREATEDB` — o superusuário do container é o mais simples):
+
+```powershell
+docker run -d --name ascentiq-test-db -p 5433:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=synthetic-local-password -e POSTGRES_DB=ascentiq_test_local postgres:17
+$env:PGHOST="localhost"; $env:PGPORT="5433"; $env:PGUSER="postgres"; $env:PGPASSWORD="synthetic-local-password"; $env:PGDATABASE="ascentiq_test_local"
+```
+
+No ambiente local, com `.venv` instalado a partir de `dashboard/requirements-dev.txt`, os mesmos testes e verificações do CI são:
+
+```powershell
+python -B -m dashboard.tests.empty_installation_smoke
+pytest
+ruff check .
+ruff format --check .
+mypy
+python -m dashboard.openapi_export --check
+```
+
+O commit de formatação está em `.git-blame-ignore-revs`; configure uma vez com `git config blame.ignoreRevsFile .git-blame-ignore-revs` para o `git blame` ignorá-lo.
+
 ## Desenvolvimento da interface
 
 O frontend oficial fica em `dashboard/web`. Node 24 LTS é necessário:
@@ -98,6 +118,8 @@ npm run build
 npx playwright install chromium
 npm run test:e2e
 ```
+
+Os tipos de `src/lib/api/generated/openapi.d.ts` são derivados de `dashboard/openapi.json`; ao alterar endpoints ou envelopes no backend, regenere com `python -m dashboard.openapi_export` na raiz e `npm run contracts` em `dashboard/web` (`npm run contracts:check` verifica se estão atualizados).
 
 Para desenvolvimento com o backend na mesma origem, configure `DEV_API_URL` com a URL interna da API e execute `npm run dev`. Em produção, `frontend` executa Next standalone como usuário sem privilégios e `web` é o gateway Nginx; somente o gateway publica a porta 8787. As consultas de saúde não são armazenadas em cache compartilhado. Os testes E2E usam um backend sintético isolado, sem escrever no diário real.
 

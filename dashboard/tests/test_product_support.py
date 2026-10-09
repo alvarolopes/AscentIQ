@@ -1,9 +1,10 @@
 import base64
+import contextlib
 import json
 import os
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,9 +12,14 @@ from dashboard.artifacts import Artifacts
 from dashboard.food_store import FoodDiary
 from dashboard.nutrition import validate
 from dashboard.provider_settings import ProviderSettings
+from dashboard.tests import pg
 
 
 class ProductSupportTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -27,8 +33,15 @@ class ProductSupportTests(unittest.TestCase):
     def test_legacy_diary_pending_complete_and_recovery(self):
         legacy = self.runtime / 'food-diary'
         legacy.mkdir()
-        original = [{'id': 'legacy', 'text': 'A meal', 'analysis': validate({'items': [
-            {'name': 'Synthetic food', 'kcal': 500, 'protein_g': 25, 'carbs_g': 60, 'fat_g': 15}]})}]
+        original = [
+            {
+                'id': 'legacy',
+                'text': 'A meal',
+                'analysis': validate(
+                    {'items': [{'name': 'Synthetic food', 'kcal': 500, 'protein_g': 25, 'carbs_g': 60, 'fat_g': 15}]}
+                ),
+            }
+        ]
         (legacy / '2026-10-01.json').write_text(json.dumps(original))
         diary = FoodDiary(self.runtime, self.root)
         self.assertEqual(diary.read(self.day)['totals']['kcal'], 500)
@@ -40,6 +53,60 @@ class ProductSupportTests(unittest.TestCase):
         restored = diary.change(self.day, restore_revision=0, expected_revision=complete['revision'])
         self.assertEqual(restored['entries'], original)
         self.assertEqual(FoodDiary(self.runtime, self.root).read(self.day)['revision'], restored['revision'])
+
+    def test_read_many_matches_read_and_uses_single_query(self):
+        diary = FoodDiary(self.runtime, self.root)
+        days = [self.day - timedelta(days=offset) for offset in range(14)]
+        for selected in days[:3]:
+            diary.change(
+                selected,
+                entry={
+                    'id': 'meal-' + selected.isoformat(),
+                    'text': 'Synthetic',
+                    'analysis': {'items': [{'name': 'Food', 'kcal': 400, 'protein_g': 20, 'carbs_g': 50, 'fat_g': 10}]},
+                },
+            )
+        legacy = self.runtime / 'food-diary'
+        (legacy / (days[5].isoformat() + '.json')).write_text(
+            json.dumps(
+                [
+                    {
+                        'id': 'legacy',
+                        'text': 'Legacy meal',
+                        'analysis': {
+                            'items': [{'name': 'Food', 'kcal': 300, 'protein_g': 15, 'carbs_g': 40, 'fat_g': 8}]
+                        },
+                    }
+                ]
+            )
+        )
+        expected = {selected: diary.read(selected) for selected in days}
+        original_db = diary._db
+        counters = []
+
+        class Counting:
+            def __init__(self, conn):
+                self.conn = conn
+                self.selects = 0
+
+            def execute(self, query, values=()):
+                if 'food_diary_state' in query and query.lstrip().upper().startswith('SELECT'):
+                    self.selects += 1
+                return self.conn.execute(query, values)
+
+            def __getattr__(self, name):
+                return getattr(self.conn, name)
+
+        @contextlib.contextmanager
+        def counting_db():
+            with original_db() as conn:
+                counter = Counting(conn)
+                counters.append(counter)
+                yield counter
+
+        with patch.object(diary, '_db', counting_db):
+            self.assertEqual(diary.read_many(days), expected)
+        self.assertEqual(sum(counter.selects for counter in counters), 1)
 
     def test_edit_retry_and_conflicting_edit(self):
         diary = FoodDiary(self.runtime, self.root)
@@ -68,10 +135,10 @@ class ProductSupportTests(unittest.TestCase):
             settings.configure('hevy', {'api_key': 'synthetic-test-key'})
             self.assertNotIn('synthetic-test-key', json.dumps(settings.status()))
             self.assertNotIn(b'synthetic-test-key', settings.path.read_bytes())
-            self.assertEqual(os.environ['HEVY_API_KEY'], 'synthetic-test-key')
-            ProviderSettings(self.runtime)
+            self.assertIsNone(os.environ.get('HEVY_API_KEY'))
+            self.assertEqual(ProviderSettings(self.runtime).credentials('hevy'), {'api_key': 'synthetic-test-key'})
             settings.configure('hevy', enabled=False)
-            self.assertEqual(os.environ['HEVY_API_KEY'], '')
+            self.assertEqual(ProviderSettings(self.runtime).credentials('hevy'), {})
             with self.assertRaises(ValueError):
                 settings.configure('hevy', {'arbitrary_env': 'not-allowed'})
 

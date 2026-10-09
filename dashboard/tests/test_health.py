@@ -1,13 +1,15 @@
 """Synthetic acceptance cases for personal memory, energy and adaptation."""
+
 import copy
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from dashboard.health import ConflictError, HealthStore, _today
+from dashboard.tests import pg
 
 
 class Diary:
@@ -15,16 +17,43 @@ class Diary:
         self.days = {}
 
     def meal(self, day, kcal=2400, complete=True, extra=None):
-        self.days[day.isoformat()] = {"entries": [{"id": "meal-" + day.isoformat(), "text": "Refeição sintética",
-            "analysis": {"items": [{"name": "Alimentos de exemplo", "kcal": kcal, "protein_g": 100,
-                                    "carbs_g": 250, "fat_g": 80}]}}],
-            "completeness": "complete" if complete else "partial", "fasting_declared": False, **(extra or {})}
+        self.days[day.isoformat()] = {
+            "entries": [
+                {
+                    "id": "meal-" + day.isoformat(),
+                    "text": "Refeição sintética",
+                    "analysis": {
+                        "items": [
+                            {
+                                "name": "Alimentos de exemplo",
+                                "kcal": kcal,
+                                "protein_g": 100,
+                                "carbs_g": 250,
+                                "fat_g": 80,
+                            }
+                        ]
+                    },
+                }
+            ],
+            "completeness": "complete" if complete else "partial",
+            "fasting_declared": False,
+            **(extra or {}),
+        }
 
     def read(self, day):
-        return copy.deepcopy(self.days.get(day.isoformat(), {"entries": [], "completeness": "empty", "fasting_declared": False}))
+        return copy.deepcopy(
+            self.days.get(day.isoformat(), {"entries": [], "completeness": "empty", "fasting_declared": False})
+        )
+
+    def read_many(self, days):
+        return {day: self.read(day) for day in days}
 
 
 class HealthTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        pg.fresh_database(cls)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
@@ -38,13 +67,32 @@ class HealthTests(unittest.TestCase):
 
     def profile(self, start=None):
         effective = (start or self.day - timedelta(days=30)).isoformat()
-        self.store.update("profile", {"name": "Pessoa sintética", "age": 42, "height_cm": 180,
-                                     "sex": "male", "weight_kg": 80, "effective_from": effective})
+        self.store.update(
+            "profile",
+            {
+                "name": "Pessoa sintética",
+                "age": 42,
+                "height_cm": 180,
+                "sex": "male",
+                "weight_kg": 80,
+                "effective_from": effective,
+            },
+        )
         self.store.update("preferences", {"activity_factor": 1.55, "effective_from": effective})
 
     def goal(self, **extra):
-        self.store.save("goals", {"id": "goal", "type": "fat_loss", "description": "Reduzir gordura preservando desempenho",
-                                 "priority": 1, "target_kcal": 2400, "effective_from": (self.day - timedelta(days=30)).isoformat(), **extra})
+        self.store.save(
+            "goals",
+            {
+                "id": "goal",
+                "type": "fat_loss",
+                "description": "Reduzir gordura preservando desempenho",
+                "priority": 1,
+                "target_kcal": 2400,
+                "effective_from": (self.day - timedelta(days=30)).isoformat(),
+                **extra,
+            },
+        )
 
     def enough_data(self, kcal=2400, slope=0):
         self.profile()
@@ -52,14 +100,30 @@ class HealthTests(unittest.TestCase):
         for offset in range(14):
             self.diary.meal(self.day - timedelta(days=offset), kcal=kcal)
         for offset in (13, 9, 5, 0):
-            self.store.save("measurements", {"id": "weight-" + str(offset), "date": (self.day - timedelta(days=offset)).isoformat(),
-                                            "weight_kg": 80 + (13 - offset) / 7 * slope})
+            self.store.save(
+                "measurements",
+                {
+                    "id": "weight-" + str(offset),
+                    "date": (self.day - timedelta(days=offset)).isoformat(),
+                    "weight_kg": 80 + (13 - offset) / 7 * slope,
+                },
+            )
 
     def test_a14_total_includes_exercise_without_duplicate(self):
         selected = self.day - timedelta(days=1)
         self.diary.meal(selected, 2200)
-        self.store.save("energy_records", {"id": "energy", "date": selected.isoformat(), "total_kcal": 2800,
-                                         "active_kcal": 800, "exercise_kcal": 500, "coverage": "full", "coverage_hours": 24})
+        self.store.save(
+            "energy_records",
+            {
+                "id": "energy",
+                "date": selected.isoformat(),
+                "total_kcal": 2800,
+                "active_kcal": 800,
+                "exercise_kcal": 500,
+                "coverage": "full",
+                "coverage_hours": 24,
+            },
+        )
         energy = self.store.summary(selected, {}, self.diary)["energy"]
         self.assertEqual(energy["expenditure_kcal"], 2800)
         self.assertEqual(energy["deficit_kcal"], 600)
@@ -88,11 +152,24 @@ class HealthTests(unittest.TestCase):
 
     def test_a34_partial_wearable_not_completed_by_hidden_model(self):
         self.profile()
-        self.store.update("preferences", {"energy_method": "wearable", "effective_from": (self.day - timedelta(days=30)).isoformat()})
+        self.store.update(
+            "preferences", {"energy_method": "wearable", "effective_from": (self.day - timedelta(days=30)).isoformat()}
+        )
         selected = self.day - timedelta(days=1)
         self.diary.meal(selected, 2200)
-        snapshot = {"daily_energy": {"daily": [{"date": selected.isoformat(), "total_kcal": 1800,
-                                              "source": "garmin", "coverage": "complete", "coverage_hours": 12}]}}
+        snapshot = {
+            "daily_energy": {
+                "daily": [
+                    {
+                        "date": selected.isoformat(),
+                        "total_kcal": 1800,
+                        "source": "garmin",
+                        "coverage": "complete",
+                        "coverage_hours": 12,
+                    }
+                ]
+            }
+        }
         energy = self.store.summary(selected, snapshot, self.diary)["energy"]
         self.assertEqual(energy["source"], "garmin")
         self.assertEqual(energy["coverage"], "partial")
@@ -103,8 +180,20 @@ class HealthTests(unittest.TestCase):
         self.profile()
         selected = self.day - timedelta(days=1)
         self.diary.meal(selected, 2200)
-        snapshot = {"daily_energy": {"daily": [{"date": selected.isoformat(), "total_kcal": 1800,
-                    "active_kcal": 300, "source": "garmin", "coverage": "unknown", "method": "wearable_total"}]}}
+        snapshot = {
+            "daily_energy": {
+                "daily": [
+                    {
+                        "date": selected.isoformat(),
+                        "total_kcal": 1800,
+                        "active_kcal": 300,
+                        "source": "garmin",
+                        "coverage": "unknown",
+                        "method": "wearable_total",
+                    }
+                ]
+            }
+        }
         energy = self.store.summary(selected, snapshot, self.diary)["energy"]
         self.assertEqual(energy["source"], "profile_model")
         self.assertEqual(energy["coverage_basis"], "modeled_full_day")
@@ -126,9 +215,15 @@ class HealthTests(unittest.TestCase):
         self.profile()
         selected = self.day - timedelta(days=1)
         self.diary.meal(selected, 2200)
-        snapshot = {"daily_energy": [{"date": selected.isoformat(), "total_kcal": 2800, "source": "garmin", "coverage": "complete"}]}
+        snapshot = {
+            "daily_energy": [
+                {"date": selected.isoformat(), "total_kcal": 2800, "source": "garmin", "coverage": "complete"}
+            ]
+        }
         self.assertEqual(self.store.summary(selected, snapshot, self.diary)["energy"]["source"], "garmin")
-        self.store.update("preferences", {"energy_method": "model", "effective_from": (self.day - timedelta(days=30)).isoformat()})
+        self.store.update(
+            "preferences", {"energy_method": "model", "effective_from": (self.day - timedelta(days=30)).isoformat()}
+        )
         energy = self.store.summary(selected, snapshot, self.diary)["energy"]
         self.assertEqual(energy["source"], "profile_model")
         self.assertEqual(energy["alternatives"][0]["total_kcal"], 2800)
@@ -137,10 +232,18 @@ class HealthTests(unittest.TestCase):
 
     def test_provider_file_read_without_local_personal_data(self):
         import json
+
         selected = self.day - timedelta(days=1)
         (self.root / "data").mkdir()
-        (self.root / "data" / "daily_energy.json").write_text(json.dumps({"daily": [
-            {"date": selected.isoformat(), "total_kcal": 2800, "source": "garmin", "coverage": "complete"}]}))
+        (self.root / "data" / "daily_energy.json").write_text(
+            json.dumps(
+                {
+                    "daily": [
+                        {"date": selected.isoformat(), "total_kcal": 2800, "source": "garmin", "coverage": "complete"}
+                    ]
+                }
+            )
+        )
         self.diary.meal(selected, 2200)
         self.assertEqual(self.store.summary(selected, {}, self.diary)["energy"]["deficit_kcal"], 600)
 
@@ -193,7 +296,10 @@ class HealthTests(unittest.TestCase):
         for offset in range(1, 9):
             self.diary.meal(self.day + timedelta(days=offset), 2300)
         for offset in (1, 3, 5, 8):
-            self.store.save("measurements", {"date": (self.day + timedelta(days=offset)).isoformat(), "weight_kg": 80 - offset * .25 / 7})
+            self.store.save(
+                "measurements",
+                {"date": (self.day + timedelta(days=offset)).isoformat(), "weight_kg": 80 - offset * 0.25 / 7},
+            )
         followup = self.store.review(next_review, {}, self.diary)["proposal"]
         self.assertEqual(followup["previous_plan"]["target_kcal"], 2300)
         self.assertTrue(followup["evidence"]["previous_decisions"])
@@ -209,7 +315,7 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(saved["proposals"][0]["status"], "stale")
         self.assertEqual(len(saved["plans"]), 1)
         fresh = self.store.review(self.day, {}, self.diary)["proposal"]
-        self.store.save("goals", {**saved["goals"][0], "desired_weekly_change_kg": -.1})
+        self.store.save("goals", {**saved["goals"][0], "desired_weekly_change_kg": -0.1})
         with self.assertRaises(ConflictError):
             self.store.decide(fresh["id"], "accepted", self.day, {}, self.diary)
 
@@ -245,7 +351,9 @@ class HealthTests(unittest.TestCase):
         yesterday = self.day - timedelta(days=1)
         before = self.store.summary(yesterday, {}, self.diary)
         self.assertEqual(before["active_goal"]["description"], "Reduzir gordura preservando desempenho")
-        self.store.save("goals", {"id": "goal", "type": "fat_loss", "description": "Objetivo concluído", "status": "completed"})
+        self.store.save(
+            "goals", {"id": "goal", "type": "fat_loss", "description": "Objetivo concluído", "status": "completed"}
+        )
         self.assertIsNone(self.store.summary(self.day, {}, self.diary)["active_goal"])
         past = self.store.summary(yesterday, {}, self.diary)
         self.assertEqual(past["active_goal"]["description"], before["active_goal"]["description"])
@@ -266,15 +374,39 @@ class HealthTests(unittest.TestCase):
 
     def test_legacy_seed_preserves_current_references_and_actual_measurement_date(self):
         import json
+
         (self.root / "data").mkdir()
         reference = (self.day - timedelta(days=20)).isoformat()
-        (self.root / "data" / "athlete_profile.json").write_text(json.dumps({"name": "Pessoa legada sintética", "age": 42,
-            "height_cm": 180, "sex": "male", "weight_kg": 85, "private_unused_field": "not adopted"}))
-        (self.root / "data" / "athlete_preferences.json").write_text(json.dumps({"activity_factor": 1.55,
-            "equipment": ["Equipamento sintético"], "provider_password": "not adopted"}))
-        snapshot = {"athlete": {}, "body": {"reference_date": reference, "current": {"weight_kg": 80, "body_fat_pct": 20}},
-                    "goals": {"health": {"description": "Meta atual sintética", "type": "fat_loss", "status": "active", "target_kcal": 2400},
-                              "endurance": {"name": "Evento concluído sintético", "status": "completed"}}}
+        (self.root / "data" / "athlete_profile.json").write_text(
+            json.dumps(
+                {
+                    "name": "Pessoa legada sintética",
+                    "age": 42,
+                    "height_cm": 180,
+                    "sex": "male",
+                    "weight_kg": 85,
+                    "private_unused_field": "not adopted",
+                }
+            )
+        )
+        (self.root / "data" / "athlete_preferences.json").write_text(
+            json.dumps(
+                {"activity_factor": 1.55, "equipment": ["Equipamento sintético"], "provider_password": "not adopted"}
+            )
+        )
+        snapshot = {
+            "athlete": {},
+            "body": {"reference_date": reference, "current": {"weight_kg": 80, "body_fat_pct": 20}},
+            "goals": {
+                "health": {
+                    "description": "Meta atual sintética",
+                    "type": "fat_loss",
+                    "status": "active",
+                    "target_kcal": 2400,
+                },
+                "endurance": {"name": "Evento concluído sintético", "status": "completed"},
+            },
+        }
         imported = self.store.seed_legacy(snapshot)
         self.assertEqual(imported["revision"], 1)
         self.assertTrue(imported["legacy_imported"])
@@ -295,16 +427,26 @@ class HealthTests(unittest.TestCase):
         empty = self.store.seed_legacy({})
         self.assertEqual(empty["revision"], 0)
         self.assertNotIn("legacy_imported", empty)
-        self.assertEqual(self.store.seed_legacy({"goals": {"health": ["historical list"], "endurance": {"unknown": 49}}})["revision"], 0)
+        self.assertEqual(
+            self.store.seed_legacy({"goals": {"health": ["historical list"], "endurance": {"unknown": 49}}})[
+                "revision"
+            ],
+            0,
+        )
         self.store.update("profile", {"name": "Pessoa informada"})
-        skipped = self.store.seed_legacy({"athlete": {"name": "Referência diferente"}, "goals": {"health": "Não substituir"}})
+        skipped = self.store.seed_legacy(
+            {"athlete": {"name": "Referência diferente"}, "goals": {"health": "Não substituir"}}
+        )
         self.assertEqual(skipped["profile"]["name"], "Pessoa informada")
         self.assertEqual(skipped["goals"], [])
 
     def test_legacy_no_numeric_target_inferred_and_failed_seed_is_atomic(self):
         import json
+
         (self.root / "data").mkdir()
-        (self.root / "data" / "athlete_profile.json").write_text(json.dumps({"age": 42, "height_cm": 180, "sex": "male", "weight_kg": 80}))
+        (self.root / "data" / "athlete_profile.json").write_text(
+            json.dumps({"age": 42, "height_cm": 180, "sex": "male", "weight_kg": 80})
+        )
         (self.root / "data" / "athlete_preferences.json").write_text(json.dumps({"activity_factor": 1.55}))
         snapshot = {"goals": {"health": {"description": "Meta atual sem alvo declarado", "type": "fat_loss"}}}
         with patch("dashboard.health._initial_plan", side_effect=RuntimeError("interrupted synthetic seed")):
@@ -327,11 +469,13 @@ class HealthTests(unittest.TestCase):
 
     def test_concurrent_stale_clients_cannot_lose_updates(self):
         revision = self.store.read()["revision"]
+
         def write(name):
             try:
                 return self.store.update("profile", {"name": name}, revision)
             except ConflictError:
                 return None
+
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(write, ("Pessoa A", "Pessoa B")))
         self.assertEqual(sum(r is not None for r in results), 1)

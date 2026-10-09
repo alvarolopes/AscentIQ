@@ -8,11 +8,33 @@ or databases. Administrative credentials are passed only to the maintenance
 service, not the running API. This is a single-athlete local deployment, not a
 multi-tenant hosted service.
 
-Versioned relational projections cover activities, provider IDs, races,
-strength sessions, exercises, sets, measurements, medical observations, sleep,
-daily performance metrics, and document checksums. Immutable dataset objects
-also retain JSONB and original JSON bytes. Large FIT/GPX/PDF files remain in the
-private file storage; the database tracks their checksums and relative paths.
+Every published revision stores each dataset as an immutable JSONB object plus
+its original bytes, with document checksums and report metadata alongside.
+Large FIT/GPX/PDF files remain in the private file storage; the database tracks
+their checksums and relative paths.
+
+## Decision: relational projections removed (issue #18)
+
+The earlier `athlete.*` projection tables (activities, races, strength
+sessions, exercise sets, sources, measurements, medical records and
+observations, sleep records, daily metrics) were dropped by migration 006.
+No product code ever read them: every page renders from the snapshot built on
+the versioned blobs, and the per-revision cache (#12) already covers read
+latency. On the reference installation they held ~115 MB of unread derived
+rows against 17 MB of blobs, and each `publish()` rewrote all of them. Keeping
+a second read path would have required duplicating the Python-side
+classification logic (`snapshot.activity_kind`, strength/Garmin consolidation,
+`elevation_source`) in SQL. Duplicate Garmin/Hevy provider IDs are still
+rejected by `publish()` via `validate_datasets` over the incoming JSON.
+
+The `athlete` schema now holds only `schema_migrations`, `revisions`, `state`,
+`dataset_blobs`, `datasets`, `documents` and `reports` (plus the `operations`
+schema). Migration 006 deletes ~115 MB of derived data that is fully
+recomputable from `dataset_blobs`, which are unchanged — take a backup before
+upgrading, as with any destructive migration. Old `pg_dump` backups that still
+contain the dropped tables restore cleanly because `migrate()` applies 006
+afterwards. External tools querying `athlete.activities` or siblings (none
+exist in this repository) would stop working.
 
 The original JSON datasets are migration references, not the current source of
 truth. They are mounted read-only in the API. Calculations use an isolated
@@ -21,12 +43,14 @@ remain unchanged. Calculated data is committed as a new revision in one
 transaction. Optimistic revision checks and advisory locks prevent lost writes.
 Repeated imports of the same content do not create duplicate records.
 
-Jobs, schedule state, and login sessions also use PostgreSQL. Existing SQLite
-records are imported without replacing the local authentication configuration.
+Jobs, schedule state, sessions, food diary, personal health memory, artifacts
+and import state live only in the PostgreSQL `operations` schema, with `jsonb`
+payloads (migration 005). Installations that still keep `runtime/*.sqlite` must
+run the previous version once to import them before upgrading.
 
 ## First migration
 
-Configure private `.env` values: `DATABASE_BACKEND=json`, `PGHOST=db`,
+Configure private `.env` values: `PGHOST=db`,
 `PGPORT=5432`, `PGDATABASE=ascentiq`, `PGUSER=ascentiq_app`, a strong `PGPASSWORD`,
 and a different strong `POSTGRES_ADMIN_PASSWORD`. Never commit these values.
 
@@ -42,7 +66,7 @@ and a different strong `POSTGRES_ADMIN_PASSWORD`. Never commit these values.
 6. Validate original JSON/dashboard/export parity before rebuilding:
    `docker compose --profile maintenance run --rm db-tools validate`.
 7. Create a database backup and test restoration in a separate temporary database.
-8. Set `DATABASE_BACKEND=postgres` and run `docker compose up -d`.
+8. Run `docker compose up -d`; the API applies pending migrations automatically (`ASCENTIQ_AUTO_MIGRATE=true`).
 
 Applied migration files are checksum-checked and must never be edited. Add a
 new numbered SQL migration for future schema changes. Re-importing stale JSON
@@ -83,6 +107,20 @@ failed/uncommitted reports are not listed by the PostgreSQL API. Historical
 reports retain their original snapshots. The live dashboard reads current data,
 not the last PDF snapshot. PDF inputs remain training-only.
 
+## Cache em memória por revisão
+
+In PostgreSQL mode the API keeps, per process, the dataset blobs and parsed JSON
+documents of only the latest active revision, plus the last built snapshot keyed
+by `(revision, day)`. The active revision is re-read on every request, so a
+revision published by another process (for example `db-tools`) is picked up on
+the next request, and the day change invalidates the snapshot by itself.
+`publish()` also clears the dataset cache. Consumers may mutate the returned
+objects, so `read_dataset` and `build_snapshot` return deep copies of cached
+content; nothing is written to disk or shared caches. Memory cost is roughly
+one revision of raw bytes (~8 MB) plus parsed documents (~30–50 MB) and one
+snapshot — acceptable for a single-athlete deployment. Set
+`ASCENTIQ_REVISION_CACHE=false` to disable the caches without reverting code.
+
 ## Backup and restoration
 
 Backups use AES-256-GCM authenticated encryption and SHA-256 verification of
@@ -116,10 +154,11 @@ docker compose stop api
 docker compose --profile maintenance run --rm db-tools export --output /app/runtime/dashboard/rollback-export
 ```
 
-Verify the export and copy its datasets to a separate JSON-mode deployment.
-Only then switch that deployment to `DATABASE_BACKEND=json`. Also migrate current
-operational/session records or use a new login. Do not blindly switch to the old
-JSON folder: it does not include changes committed after the migration.
+Verify the export and keep it as the rollback reference. Operational state has
+no file fallback: a rollback deployment needs the PostgreSQL database, so the
+encrypted backup must be created before the schema migration runs. Do not blindly
+switch to the old JSON folder: it does not include changes committed after the
+migration.
 
 No production volume deletion is part of this procedure. A Docker volume is
 persistent storage, not an independent backup. Never use `down -v` for recovery.

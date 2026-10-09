@@ -1,0 +1,40 @@
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+extend-exclude = ["scripts", "dashboard/web", "tmp", "runtime", "data", "analysis", "activities"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",   # strings longas; o format cuida do resto
+    "E701", "E702",   # estilo compacto de uma linha usado no projeto
+    "E731",   # lambdas nomeadas curtas
+    "B008",   # Depends/Query/Body do FastAPI
+    "B905",   # zip() sem strict= é intencional
+    "SIM108", "SIM117",   # ternários e withs aninhados legíveis como estão
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dashboard", "scripts"]
+
+[tool.ruff.format]
+quote-style = "preserve"   # o código mistura aspas simples e duplas; não reescrever só por isso
+
+[tool.pytest.ini_options]
+testpaths = ["dashboard/tests", "tests"]
+python_files = ["test_*.py"]
+addopts = "-p no:cacheprovider -q"
+
+[tool.mypy]
+python_version = "3.14"
+files = ["dashboard"]
+exclude = ["dashboard/web/", "dashboard/tests/preview_app.py"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["fitdecode", "fitdecode.*", "pypdf", "pypdf.*", "scripts", "scripts.*"]
+ignore_missing_imports = true
+follow_imports = "skip"   # scripts/ fica fora de tipagem até a issue #17

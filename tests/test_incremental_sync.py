@@ -4,10 +4,10 @@ import unittest
 from datetime import date
 from types import SimpleNamespace
 
+from dashboard.load_model import build_recovery_summary
 from scripts.compute_garmin_sync_window import sync_start
 from scripts.fetch_garmin_mcp_snapshot import extract_activity_ids, fetch_all_activities, filter_known_activities
 from scripts.fetch_hevy_workouts import HevyClient
-from scripts.build_performance_management_model import build_recovery_summary
 
 
 class IncrementalSyncTests(unittest.TestCase):
@@ -85,9 +85,7 @@ class IncrementalSyncTests(unittest.TestCase):
                 return [{"id": "remaining"}], 1
 
         client = FakeClient()
-        workouts, _, _ = client.get_incremental_workouts(
-            [{"id": "removed"}, {"id": "remaining"}], 1
-        )
+        workouts, _, _ = client.get_incremental_workouts([{"id": "removed"}, {"id": "remaining"}], 1)
         self.assertTrue(client.full_called)
         self.assertEqual(workouts, [{"id": "remaining"}])
 

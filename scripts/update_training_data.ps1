@@ -20,9 +20,9 @@ $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Pa
 Set-Location $ProjectRoot
 . (Join-Path $PSScriptRoot "load_env.ps1") -Path (Join-Path $ProjectRoot ".env")
 
-if ($env:DATABASE_BACKEND -eq "postgres") {
+if (-not $env:ASCENTIQ_LEGACY_FILE_SYNC) {
   if ($FullRefresh -or $IncludeGarminWorkouts -or $StartDate -or $EndDate -or $MaxActivities -or $MaxDetailActivities -or $MaxGarminWorkouts -or $OverlapDays -ne 7 -or $SkipExtraDailyMetrics) {
-    throw "Custom legacy import options are unavailable in PostgreSQL mode. Use the default transactional sync; JSON originals are read-only migration references."
+    throw "Custom legacy import options are unavailable with the PostgreSQL pipeline. Use the default transactional sync, or set ASCENTIQ_LEGACY_FILE_SYNC=1 to run the legacy file scripts against a standalone data folder."
   }
   if ($ValidateOnly) {
     & docker compose exec -T api python -m dashboard.database_cli status

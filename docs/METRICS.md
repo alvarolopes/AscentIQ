@@ -18,6 +18,8 @@ This project focuses on endurance durability and mountain-readiness rather than 
 
 ## Performance Management Metrics
 
+The load calculation lives in `dashboard/load_model.py`; `scripts/build_performance_management_model.py` is only a CLI wrapper around it.
+
 - `fitness`: chronic load estimate using a 42-day smoothing window.
 - `fatigue`: acute load estimate using a 7-day smoothing window.
 - `form`: readiness estimate calculated as `fitness - fatigue`.
