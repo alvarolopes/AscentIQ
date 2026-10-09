@@ -8,6 +8,7 @@ venv/
 activities/gpx/*
 activities/garmin_csv/*
 activities/notes/*
+activities/strava_export/
 *.fit
 *.fit.gz
 *.gpx
@@ -40,6 +41,9 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+compose.override.yaml
+compose.pre-next.yaml
+compose.rollback-next.yaml
 data/
 analysis/
 runtime/
