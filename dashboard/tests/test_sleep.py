@@ -2,9 +2,9 @@ import unittest
 from datetime import date
 
 from dashboard.daily_analysis import prepare
+from dashboard.load_model import build_recovery_summary
 from dashboard.snapshot import build_snapshot
 from dashboard.tests.test_dashboard import Fixture
-from scripts.build_performance_management_model import build_recovery_summary
 from scripts.sleep_data import summarize_sleep
 
 

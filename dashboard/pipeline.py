@@ -191,12 +191,12 @@ def rebuild(root: Path = ROOT, progress=lambda _: None) -> None:
     # legacy scripts intentionally reject empty input; publish missing metrics
     # rather than failing the entire report or using portfolio examples.
     data = root / 'data'
-    activities = []
-    for name in ('training_history', 'race_history'):
+    histories: dict[str, list] = {'training_history': [], 'race_history': []}
+    for name, rows in histories.items():
         path = data / (name + '.json')
         if path.exists():
-            activities.extend(json.loads(path.read_text(encoding='utf-8-sig')))
-    if not any(isinstance(row, dict) and row.get('date') for row in activities):
+            rows.extend(json.loads(path.read_text(encoding='utf-8-sig')))
+    if not any(isinstance(row, dict) and row.get('date') for rows in histories.values() for row in rows):
         data.mkdir(parents=True, exist_ok=True)
         (data / 'performance_management_model.json').write_text(
             json.dumps(
@@ -211,8 +211,28 @@ def rebuild(root: Path = ROOT, progress=lambda _: None) -> None:
         )
         progress('Sem atividades datadas; métricas de carga permanecem desconhecidas')
         return
+    from dashboard.load_model import build_model
+    from dashboard.settings import default_tz
+
+    progress('build performance management model')
+    sleep_path = data / 'garmin_sleep_reference_2026_04.json'
+    sleep = json.loads(sleep_path.read_text(encoding='utf-8-sig')) if sleep_path.exists() else None
+    result = build_model(
+        histories['training_history'],
+        histories['race_history'],
+        sleep,
+        today=datetime.now(default_tz()).date(),
+        generated_at=datetime.now(default_tz()),
+    )
+    if result is not None:
+        (data / 'performance_management_model.json').write_text(
+            json.dumps(result.payload, ensure_ascii=False, indent=2), encoding='utf-8'
+        )
+        context = root / 'analysis' / 'context'
+        context.mkdir(parents=True, exist_ok=True)
+        (context / 'performance_management_model.md').write_text(result.markdown, encoding='utf-8')
+        (context / 'performance_management_chart.svg').write_text(result.svg, encoding='utf-8')
     for name in (
-        "build_performance_management_model.py",
         "build_last_3_weeks_pmc_chart.py",
         "build_training_execution_indexes.py",
         "build_current_performance_dashboard.py",

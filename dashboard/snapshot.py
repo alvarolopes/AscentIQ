@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from dashboard.load_model import build_recovery_summary
 from dashboard.repository import (
     REVISION,
     SNAPSHOT_CACHE,
@@ -18,7 +19,6 @@ from dashboard.repository import (
     revision_metadata,
 )
 from dashboard.settings import default_tz
-from scripts.build_performance_management_model import build_recovery_summary
 from scripts.sleep_data import sleep_rows, summarize_sleep
 
 ROOT = Path(__file__).resolve().parents[1]

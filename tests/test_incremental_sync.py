@@ -4,7 +4,7 @@ import unittest
 from datetime import date
 from types import SimpleNamespace
 
-from scripts.build_performance_management_model import build_recovery_summary
+from dashboard.load_model import build_recovery_summary
 from scripts.compute_garmin_sync_window import sync_start
 from scripts.fetch_garmin_mcp_snapshot import extract_activity_ids, fetch_all_activities, filter_known_activities
 from scripts.fetch_hevy_workouts import HevyClient
