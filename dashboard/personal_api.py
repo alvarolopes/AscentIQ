@@ -81,7 +81,7 @@ def install_personal_routes(app, runtime, root, diary, manager, *, health, provi
 
     from dashboard.nutrition_targets import NutritionTargets
 
-    targets = NutritionTargets(health, snapshot, providers)
+    targets = NutritionTargets(health, snapshot, providers, diary)
     app.state.nutrition_targets = targets
 
     @app.get('/api/nutrition-targets/{day}')

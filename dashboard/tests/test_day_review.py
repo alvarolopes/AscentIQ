@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from dashboard.day_review import SECTIONS, interpretation_context, prepare, render_response
+from dashboard.day_review import SECTIONS, facts_text, interpretation_context, prepare, render_response
 from dashboard.food_store import FoodDiary
 from dashboard.health import HealthStore
 from dashboard.tests import pg
@@ -78,6 +78,35 @@ class DayReviewTests(unittest.TestCase):
             'strength': [{'id': 'h1', 'date': '2026-10-05', 'garmin_activity_ids': ['g1']}],
             'medical': {'secret': 'private-medical-marker'},
         }
+
+    def test_baseline_provenance_survives_prepare_and_controls_facts_wording(self):
+        plan = self.health.summary(self.day, self.snapshot, self.diary)['active_plan']
+        self.health.save(
+            'plans',
+            {
+                **plan,
+                'id': 'wearable-plan',
+                'version': plan['version'] + 1,
+                'baseline_expenditure_kcal': 2700,
+                'baseline_source': 'garmin_recent_mean',
+                'baseline_method': 'wearable_recent_mean_14d_v1',
+            },
+        )
+        context = self.prepare()['context']
+        self.assertEqual(context['plan']['baseline_source'], 'garmin_recent_mean')
+        self.assertEqual(context['plan']['baseline_method'], 'wearable_recent_mean_14d_v1')
+        self.assertEqual(interpretation_context(context)['plan']['baseline_source'], 'garmin_recent_mean')
+        for source, wording in (
+            ('garmin_recent_mean', 'pela média recente do relógio'),
+            ('garmin', 'do relógio para o dia'),
+            ('manual', 'manual para o dia'),
+            ('profile_declared', 'declarado no perfil'),
+            ('profile_model', 'modelado pelo perfil'),
+            (None, 'estimado'),
+        ):
+            with self.subTest(source=source):
+                context['plan']['baseline_source'] = source
+                self.assertIn(f'gasto total {wording}', facts_text(context))
 
     def tearDown(self):
         self.temp.cleanup()

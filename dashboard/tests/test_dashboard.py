@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta
@@ -35,6 +37,23 @@ class Fixture(unittest.TestCase):
 
     def save(self, name, payload):
         (self.root / "data" / f"{name}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+class WorkspaceStagingTests(unittest.TestCase):
+    def test_staged_scripts_resolve_dashboard_imports(self):
+        from dashboard.database_pipeline import stage_support_files
+        from dashboard.snapshot import ROOT
+
+        with tempfile.TemporaryDirectory() as name:
+            stage = Path(name)
+            stage_support_files(ROOT, stage)
+            result = subprocess.run(
+                [sys.executable, str(stage / "scripts" / "import_garmin_mcp_snapshot.py"), "--help"],
+                cwd=stage,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class SnapshotTests(Fixture):

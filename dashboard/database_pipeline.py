@@ -29,6 +29,17 @@ def backup_if_due(root, runtime, progress):
     latest.write_text(json.dumps(result), encoding="utf-8")
 
 
+def stage_support_files(root: Path, stage: Path) -> None:
+    """Copy the code staged calculator subprocesses need to resolve imports."""
+    shutil.copytree(root / "scripts", stage / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(
+        root / "dashboard",
+        stage / "dashboard",
+        ignore=shutil.ignore_patterns("__pycache__", "web", "tests"),
+        dirs_exist_ok=True,
+    )
+
+
 def run_database_pipeline(
     job, root, runtime, progress=lambda _: None, *, providers=None, settings=None, replacements=None
 ):
@@ -56,8 +67,7 @@ def run_database_pipeline(
                     target = stage / path
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(raw)
-                shutil.copytree(root / "scripts", stage / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
-                shutil.copytree(root / "dashboard" / "templates", stage / "dashboard" / "templates")
+                stage_support_files(root, stage)
                 sources = (
                     ("garmin",)
                     if job["mode"] == "sync-garmin"

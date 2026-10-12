@@ -22,7 +22,12 @@ Estime porções ausentes, mas declare claramente as hipóteses nas notas.
 Nas notas, seja breve: só hipóteses de porção e incertezas relevantes, sem repetir
 os alimentos e nutrientes já listados ou acrescentar explicações genéricas.
 Diferencie peso cru e pronto. Não invente
-rótulos exatos de marcas; identifique estimativas. Não prescreva metas ou dietas.'''
+rótulos exatos de marcas; identifique estimativas. Não prescreva metas ou dietas.
+Pesos e medidas informados referem-se ao alimento como servido (pronto/cozido),
+salvo quando o usuário disser cru. Calcule cada item a partir de valores típicos
+por 100 g do alimento preparado multiplicados pela quantidade informada (ex.:
+peito de frango grelhado ≈ 165 kcal/100 g; batata cozida ≈ 87 kcal/100 g);
+declare nas notas quando usou valor cru.'''
 
 
 def prompt(text):
