@@ -14,7 +14,9 @@ from datetime import timedelta
 from dashboard import settings
 from dashboard.health import (
     _active_plan,
+    _complete_energy_record,
     _effective_values,
+    _energy_candidates,
     _goals_for_day,
     _known,
     _model,
@@ -126,14 +128,24 @@ def context_for(health, snapshot, day, diary=None):
             text.replace('fator de atividade declarado', 'fator de atividade estimado pelo volume registrado')
             for text in model_reference['assumptions']
         ]
-    wearable = recent_reference(_provider_energy(snapshot, health.root), day)
+    provider_rows = _provider_energy(snapshot, health.root)
+    wearable = recent_reference(provider_rows, day)
+    manual, providers = _energy_candidates(state, provider_rows, day)
+    daily_reference = _complete_energy_record(manual + providers)
+    if daily_reference is not None:
+        daily_reference = {
+            **daily_reference,
+            'method': daily_reference.get('method', 'wearable_total'),
+            'assumptions': list(daily_reference.get('assumptions', []))
+            + ['Gasto diário informado com cobertura completa; não é uma medição do metabolismo.'],
+        }
     method_choice = prefs.get('energy_method', 'auto')
     if method_choice == 'wearable':
         reference = wearable
     elif method_choice == 'model':
         reference = model_reference
     else:
-        reference = wearable or model_reference
+        reference = daily_reference or wearable or model_reference
     reference_is_wearable = reference is not None and reference is wearable
     missing = []
     if not profile.get('weight_kg'):
@@ -173,6 +185,7 @@ def context_for(health, snapshot, day, diary=None):
     lower_adjustment = 0 if recovery_alert else -min(0.15, policy['max_planned_deficit_pct'])
     weights = _weights(state, snapshot, day)
     composition = {}
+    composition_dates = {}
     composition_rows = [
         row
         for row in (*state['measurements'], *weights)
@@ -182,11 +195,18 @@ def context_for(health, snapshot, day, diary=None):
         found = [key for key in ('body_fat_pct', 'lean_mass_kg', 'waist_cm') if _known(row.get(key))]
         if found:
             composition.update({key: row[key] for key in found})
-            composition['reference_date'] = str(row['date'])[:10]
+            composition_dates.update({key: str(row['date'])[:10] for key in found})
+    if composition:
+        composition['reference_dates'] = composition_dates
+        if len(set(composition_dates.values())) == 1:
+            composition['reference_date'] = next(iter(composition_dates.values()))
     calibration = {'status': 'unavailable'}
-    if diary is not None and reference is not None:
+    if diary is not None and reference is not None and reference is not daily_reference:
         series = health._summary(state, day - timedelta(days=1), snapshot, diary, 28)[0]['series']
-        calibration = calibrate(reference['total_kcal'], series, weights)
+        calibration_weights = [
+            row for row in weights if (day - timedelta(days=28)).isoformat() <= row['date'] < day.isoformat()
+        ]
+        calibration = calibrate(reference['total_kcal'], series, calibration_weights)
         if calibration['status'] == 'applied':
             reference = {
                 **reference,
@@ -215,9 +235,24 @@ def context_for(health, snapshot, day, diary=None):
             if key in row
         }
 
+    reference_description = (
+        'Gasto pela média recente de dias completos do relógio; estimativa do dispositivo, não medição.'
+        if reference_is_wearable
+        else 'Gasto declarado no perfil.'
+        if reference and reference.get('source') == 'profile_declared'
+        else 'Gasto diário manual com cobertura completa.'
+        if reference and reference.get('source') == 'manual'
+        else 'Gasto diário do relógio com cobertura completa; estimativa do dispositivo.'
+        if reference is not None and reference is daily_reference
+        else 'Gasto estimado pelo perfil.'
+    )
+    if calibration['status'] == 'applied':
+        reference_description += (
+            ' Calibrada por ingestão registrada e tendência de peso; não comprova adequação da meta.'
+        )
     context = {
         'method': METHOD,
-        'prompt_revision': 5,
+        'prompt_revision': 6,
         'date': day.isoformat(),
         'profile': {
             k: profile.get(k) for k in ('age', 'birth_date', 'sex', 'height_cm', 'weight_kg', 'weight_reference_date')
@@ -234,15 +269,9 @@ def context_for(health, snapshot, day, diary=None):
         ],
         'interpretation': {
             'goal_effective_from': 'Vigência do objetivo; não é data de evento.',
-            'energy_reference': (
-                'Gasto pela média recente de dias completos do relógio; estimativa do dispositivo, não medição.'
-                if reference_is_wearable
-                else 'Gasto declarado no perfil.'
-                if reference and reference.get('source') == 'profile_declared'
-                else 'Estimativa; não calibrada por ingestão e evolução do peso.'
-            ),
+            'energy_reference': reference_description,
             'outside_training_activity': 'Não medida.',
-            'body_composition': 'Medida mais recente registrada; se antiga, tratar como aproximada e declarar a idade como limitação.',
+            'body_composition': 'Cada campo tem sua própria data em reference_dates; se antigo, tratar como aproximado e declarar a idade como limitação.',
             'carbohydrates': 'Energia restante após proteína e gordura; validar com treino e recuperação.',
         },
         'activity_reference': {
@@ -415,6 +444,10 @@ class NutritionTargets:
                 origin = f'Referência de gasto pela média do relógio ({reference.get("days_used")} dias completos)'
             elif reference.get('source') == 'profile_declared':
                 origin = 'Referência de gasto declarada no perfil'
+            elif reference.get('source') == 'manual':
+                origin = 'Referência de gasto diário manual'
+            elif reference.get('source') != 'profile_model':
+                origin = 'Referência de gasto diário do relógio'
             else:
                 origin = 'Referência de gasto estimada pelo perfil'
             clamp_note = ''
@@ -447,7 +480,9 @@ class NutritionTargets:
             # Missing data are verified here; model prose is not evidence that exams,
             # symptoms or measurements are absent from the person's actual life.
             limitations = list(reference['assumptions']) + [
-                'A adequação da meta não foi validada por ingestão registrada e tendência de peso.',
+                'A calibração estima o gasto por ingestão registrada e tendência de peso; não comprova a adequação da meta.'
+                if context['calibration'].get('status') == 'applied'
+                else 'A adequação da meta não foi validada por ingestão registrada e tendência de peso.',
                 'Carboidratos completam a energia após proteína e gordura; não representam uma necessidade medida.',
             ]
             if not context['recovery_checkins']:
@@ -460,7 +495,7 @@ class NutritionTargets:
                 limitations.append('Não há prazo explícito nos objetivos ativos para confirmar proximidade de evento.')
             if (
                 context['activity_reference']['factor_inferred']
-                and (context['energy_reference'] or {}).get('source') != 'garmin_recent_mean'
+                and (context['energy_reference'] or {}).get('source') == 'profile_model'
             ):
                 limitations.append(
                     'Fator de atividade estimado pelo volume dos últimos sete dias; rotina fora dos treinos não foi medida.'

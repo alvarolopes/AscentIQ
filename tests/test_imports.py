@@ -22,6 +22,7 @@ from scripts.import_garmin_mcp_snapshot import (
     merge_daily_energy,
     merge_history,
     normalize_activity,
+    normalize_daily_energy,
 )
 
 CSV = "id,date,type,duration_seconds,name,distance_km,elevation_gain_m,avg_hr,calories\na,2026-10-01T08:00:00-03:00,Run,1800,Easy run,5,20,135,450\n"
@@ -486,6 +487,20 @@ class GarminImportTests(unittest.TestCase):
         self.assertEqual(current["coverage"], "partial")
         self.assertAlmostEqual(current["coverage_hours"], 15.1, places=1)
         self.assertEqual(current["coverage_basis"], "inferred_from_observation_time")
+
+    def test_explicit_hours_and_interval_end_survive_later_import(self):
+        for evidence, expected in (
+            ({"coverageHours": 12}, ("partial", 12)),
+            ({"coverageHours": 0}, ("partial", 0)),
+            ({"coverageHours": 24}, ("complete", 24)),
+            ({"intervalEnd": "2026-10-07T12:00:00"}, ("partial", 12)),
+        ):
+            with self.subTest(evidence=evidence):
+                result = normalize_daily_energy(
+                    {"calendarDate": "2026-10-07", "totalKilocalories": 1500, **evidence},
+                    observed_at="2026-10-08T08:00:00-03:00",
+                )
+                self.assertEqual((result["coverage"], result["coverage_hours"]), expected)
 
     def test_later_observation_upgrades_partial_coverage_on_merge(self):
         with tempfile.TemporaryDirectory() as tmp:

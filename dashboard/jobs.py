@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import builtins
-import os
+import sys
 import threading
 import uuid
 from contextlib import contextmanager
@@ -25,14 +25,14 @@ def process_lock(path: Path):
         handle.flush()
     handle.seek(0)
     try:
-        if os.name == "nt":
+        if sys.platform == "win32":
             import msvcrt
 
             msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
         else:
             import fcntl
 
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]  # fcntl só existe em POSIX; o branch é os.name != "nt"
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         yield
     finally:
         handle.close()

@@ -55,20 +55,34 @@ def infer_coverage(
 
 
 def with_inferred_coverage(row: dict) -> dict:
-    """Backfill coverage from the observation timestamp; never overrides an explicit value."""
-    if row.get("coverage") in (None, "unknown") and row.get("observed_at"):
+    """Backfill coverage, preferring explicit hours/intervals over observation time."""
+    if row.get("coverage") not in (None, "unknown"):
+        return row
+    hours = row.get("coverage_hours")
+    if hours is not None and _known(hours):
+        coverage, basis = "complete" if hours >= 24 else "partial", "explicit_coverage_hours"
+    elif row.get("interval_end"):
+        day = _local_date(row.get("date"))
+        end = _local_datetime(row["interval_end"])
+        start_value = row.get("interval_start") or row.get("wellness_start_local")
+        start = _local_datetime(start_value) if start_value else None
+        if day is None or end is None or (start_value and start is None):
+            return row
+        day_start = datetime.combine(day, datetime.min.time())
+        start = max(start or day_start, day_start)
+        end = min(end, day_start + timedelta(days=1))
+        hours = round(max((end - start).total_seconds() / 3600, 0), 1)
+        coverage, basis = "complete" if hours >= 24 else "partial", "explicit_interval"
+    elif row.get("observed_at"):
         coverage, hours = infer_coverage(
             row.get("date") or "", row["observed_at"], row.get("wellness_start_local") or row.get("interval_start")
         )
         if coverage == "unknown":
             return row
-        return {
-            **row,
-            "coverage": coverage,
-            "coverage_hours": hours,
-            "coverage_basis": "inferred_from_observation_time",
-        }
-    return row
+        basis = "inferred_from_observation_time"
+    else:
+        return row
+    return {**row, "coverage": coverage, "coverage_hours": hours, "coverage_basis": basis}
 
 
 def _complete(row) -> bool:
@@ -84,7 +98,12 @@ def recent_reference(rows: list[dict], day: date, *, window_days: int = 14, min_
     by_day = {}
     for raw in rows:
         row = with_inferred_coverage(raw) if isinstance(raw, dict) else raw
-        if not isinstance(row, dict) or not _known(row.get("total_kcal")) or not _complete(row):
+        if (
+            not isinstance(row, dict)
+            or not _known(row.get("total_kcal"))
+            or not _complete(row)
+            or row.get("is_projection") is True
+        ):
             continue
         row_day = _local_date(row.get("date"))
         if row_day is None or not start <= row_day <= end:

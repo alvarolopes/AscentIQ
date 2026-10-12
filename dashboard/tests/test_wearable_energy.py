@@ -32,6 +32,25 @@ class InferCoverageTests(unittest.TestCase):
             ("unknown", None),
         )
 
+    def test_explicit_hours_and_intervals_take_priority_over_observation(self):
+        for evidence, hours in (
+            ({"coverage_hours": 12}, 12),
+            ({"coverage_hours": 0}, 0),
+            ({"coverage_hours": 24}, 24),
+            ({"interval_end": "2026-10-08T12:00:00"}, 12),
+            ({"interval_start": "2026-10-08T12:00:00", "interval_end": "2026-10-09T00:00:00"}, 12),
+        ):
+            with self.subTest(evidence=evidence):
+                original = row(date(2026, 10, 8), coverage="unknown", observed_at="2026-10-09T08:00:00", **evidence)
+                inferred = with_inferred_coverage(original)
+                self.assertEqual(inferred["coverage"], "complete" if hours == 24 else "partial")
+                self.assertEqual(inferred["coverage_hours"], hours)
+                self.assertEqual(original["coverage"], "unknown")
+
+    def test_invalid_explicit_interval_cannot_be_promoted_by_observation(self):
+        original = row(date(2026, 10, 8), coverage="unknown", observed_at="2026-10-09T08:00:00", interval_end="invalid")
+        self.assertIs(with_inferred_coverage(original), original)
+
     def test_explicit_coverage_is_never_overwritten(self):
         explicit = row(date(2026, 10, 8), coverage="partial", coverage_hours=10, observed_at="2026-10-09T08:00:00")
         self.assertIs(with_inferred_coverage(explicit), explicit)
@@ -43,6 +62,16 @@ class InferCoverageTests(unittest.TestCase):
 
 
 class RecentReferenceTests(unittest.TestCase):
+    def test_projected_days_neither_count_nor_change_the_mean(self):
+        today = date(2026, 10, 15)
+        rows = [row(today - timedelta(days=o), coverage="complete") for o in range(1, 7)]
+        rows.append(row(today - timedelta(days=7), total=9000, coverage="complete", is_projection=True))
+        self.assertIsNone(recent_reference(rows, today))
+        rows.append(row(today - timedelta(days=8), coverage="complete"))
+        reference = recent_reference(rows, today)
+        assert reference is not None
+        self.assertEqual((reference["days_used"], reference["total_kcal"]), (7, 2700))
+
     def test_mean_median_and_window_exclude_the_day_itself(self):
         today = date(2026, 10, 15)
         rows = [

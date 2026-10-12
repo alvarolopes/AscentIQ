@@ -162,8 +162,15 @@ def facts_text(context):
             + f"pontuação {_number(sleep.get('score'))}."
         )
     if plan.get('baseline_expenditure_kcal') is not None:
+        origin = {
+            'garmin_recent_mean': 'pela média recente do relógio',
+            'garmin': 'do relógio para o dia',
+            'manual': 'manual para o dia',
+            'profile_declared': 'declarado no perfil',
+            'profile_model': 'modelado pelo perfil',
+        }.get(plan.get('baseline_source'), 'estimado')
         lines.append(
-            f"Referência de gasto total modelado usada na meta: {_number(plan['baseline_expenditure_kcal'])} kcal; não é uma medição do metabolismo basal."
+            f"Referência de gasto total {origin} usada na meta: {_number(plan['baseline_expenditure_kcal'])} kcal; não é uma medição do metabolismo basal."
         )
     profile = context['profile']
     if profile.get('weight_kg') is not None:
@@ -264,7 +271,8 @@ def interpretation_context(context):
         'plan': {
             'target_available': plan.get('target_kcal') is not None,
             'target_is_estimated': True,
-            'modeled_total_expenditure_is_not_basal_metabolism': True,
+            'total_expenditure_is_not_basal_metabolism': True,
+            'baseline_source': plan.get('baseline_source'),
         },
         'food': {
             'completeness': food['completeness'],
@@ -402,6 +410,8 @@ def prepare(day, snapshot, state, summary, diary, *, notes='', planning=None, no
                     'carbs_g',
                     'fat_g',
                     'baseline_expenditure_kcal',
+                    'baseline_source',
+                    'baseline_method',
                     'source',
                     'method',
                     'effective_from',

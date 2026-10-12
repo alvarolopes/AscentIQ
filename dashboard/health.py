@@ -599,21 +599,35 @@ def _provider_energy(snapshot, root):
     return [with_inferred_coverage(row) if isinstance(row, dict) else row for row in rows]
 
 
-def _energy(state, snapshot, day, food, provider_rows, recent=None):
-    profile = _profile_for_day(state, snapshot, day)
-    preferences = _effective_values(state, "preferences", day)
+def _energy_candidates(state, provider_rows, day):
     manual = [r for r in state["energy_records"] if r["date"] == day.isoformat()]
     providers = [
         r for r in provider_rows if str(r.get("date", ""))[:10] == day.isoformat() and _known(r.get("total_kcal"))
     ]
+    manual = sorted(manual, key=lambda r: r.get("updated_at", ""), reverse=True)
+    return manual, providers
+
+
+def _complete_energy_record(rows):
+    return next(
+        (
+            row
+            for row in rows
+            if _known(row.get("total_kcal"))
+            and row.get("coverage") in {"full", "complete"}
+            and (row.get("coverage_hours") is None or row["coverage_hours"] >= 24)
+        ),
+        None,
+    )
+
+
+def _energy(state, snapshot, day, food, provider_rows, recent=None):
+    profile = _profile_for_day(state, snapshot, day)
+    preferences = _effective_values(state, "preferences", day)
+    manual, providers = _energy_candidates(state, provider_rows, day)
     # Sources are alternatives, never additive. Unknown wearable coverage remains
     # unknown even when a separately identified full-day model is selected.
-    manual = sorted(manual, key=lambda r: r.get("updated_at", ""), reverse=True)
     candidates = manual + providers
-    complete = lambda row: (
-        row.get("coverage") in {"full", "complete"}
-        and (row.get("coverage_hours") is None or row["coverage_hours"] >= 24)
-    )
     method_choice = preferences.get("energy_method", "auto")
     possible_model = _model(profile, preferences, day)
     today = _today(preferences)
@@ -633,13 +647,11 @@ def _energy(state, snapshot, day, food, provider_rows, recent=None):
         }
     source, model = None, None
     if method_choice == "wearable":
-        source = (
-            next((r for r in providers if complete(r)), None) or recent_source or (providers[0] if providers else None)
-        )
+        source = _complete_energy_record(providers) or recent_source or (providers[0] if providers else None)
     elif method_choice == "model":
         model = possible_model
     else:
-        source = next((r for r in manual if complete(r)), None) or next((r for r in providers if complete(r)), None)
+        source = _complete_energy_record(candidates)
         if source is None and day >= today and recent_source is not None:
             source = recent_source
         if source is None:

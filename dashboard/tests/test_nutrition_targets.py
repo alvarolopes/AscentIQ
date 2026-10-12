@@ -235,6 +235,26 @@ class NutritionTargetTests(unittest.TestCase):
         self.assertEqual(context['body_composition']['body_fat_pct'], 19.5)
         self.assertEqual(context['body_composition']['lean_mass_kg'], 64.4)
         self.assertEqual(context['body_composition']['reference_date'], day)
+        self.assertEqual(context['body_composition']['reference_dates'], {'body_fat_pct': day, 'lean_mass_kg': day})
+
+    def test_new_waist_does_not_redate_old_body_fat_or_lean_mass(self):
+        old = (self.day - timedelta(days=100)).isoformat()
+        recent = (self.day - timedelta(days=1)).isoformat()
+        self.health.save(
+            'measurements',
+            {'id': 'old', 'date': old, 'weight_kg': 80, 'body_fat_pct': 20, 'lean_mass_kg': 64},
+        )
+        self.health.save('measurements', {'id': 'waist', 'date': recent, 'waist_cm': 85})
+        self.health.save(
+            'measurements', {'id': 'future', 'date': (self.day + timedelta(days=1)).isoformat(), 'body_fat_pct': 18}
+        )
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        composition = context['body_composition']
+        self.assertEqual(composition['body_fat_pct'], 20)
+        self.assertEqual(composition['lean_mass_kg'], 64)
+        self.assertEqual(composition['waist_cm'], 85)
+        self.assertEqual(composition['reference_dates'], {'body_fat_pct': old, 'lean_mass_kg': old, 'waist_cm': recent})
+        self.assertNotIn('reference_date', composition)
 
     def test_out_of_range_adjustment_is_clamped_and_recorded_not_rejected(self):
         _, context, _, _ = context_for(self.health, self.snapshot, self.day)
@@ -365,7 +385,7 @@ class NutritionTargetTests(unittest.TestCase):
             self.assertEqual(reference['source'], 'garmin_recent_mean')
             self.assertEqual(reference['total_kcal'], expected)
             self.assertEqual(reference['days_used'], 10)
-            self.assertEqual(context['prompt_revision'], 5)
+            self.assertEqual(context['prompt_revision'], 6)
             self.assertEqual(context['energy_reference_alternatives'][0]['source'], 'profile_model')
             self.assertEqual(context['calibration']['status'], 'unavailable')
         plan = _active_plan(self.health.read(), self.day)
@@ -383,6 +403,66 @@ class NutritionTargetTests(unittest.TestCase):
         _, context, _, _ = context_for(self.health, self.snapshot, self.day)
         self.assertEqual(context['energy_reference']['source'], 'profile_model')
         self.assertEqual(context['energy_reference_alternatives'], [])
+
+    def test_complete_manual_total_matches_daily_energy_and_published_target(self):
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(14)}
+        self.health.save(
+            'energy_records',
+            {'id': 'manual', 'date': self.day.isoformat(), 'total_kcal': 3500, 'coverage': 'complete'},
+        )
+        diary = Diary()
+        for offset in range(1, 15):
+            diary.meal(self.day - timedelta(days=offset), kcal=2400)
+        for offset in (24, 17, 10, 3):
+            self.health.save(
+                'measurements',
+                {'id': f'weight{offset}', 'date': (self.day - timedelta(days=offset)).isoformat(), 'weight_kg': 80.0},
+            )
+        targets = NutritionTargets(self.health, lambda: self.snapshot, diary=diary)
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day, diary)
+        daily = self.health.summary(self.day, self.snapshot, diary)['energy']
+        self.assertEqual(context['energy_reference']['total_kcal'], daily['expenditure_kcal'])
+        self.assertEqual(context['energy_reference']['source'], 'manual')
+        self.assertEqual(context['calibration']['status'], 'unavailable')
+        self.assertIn('manual', context['interpretation']['energy_reference'])
+        with patch('dashboard.nutrition_targets.request_text', return_value=self.output):
+            targets.refresh(self.day)
+        plan = _active_plan(self.health.read(), self.day)
+        self.assertEqual(plan['baseline_expenditure_kcal'], 3500)
+        self.assertEqual(plan['baseline_source'], 'manual')
+        self.assertIn('manual', plan['reason'])
+        self.assertNotIn('Fator de atividade estimado', ' '.join(plan['limitations']))
+
+    def test_auto_uses_complete_provider_before_recent_mean_and_ignores_partial_manual(self):
+        self.health.save(
+            'energy_records',
+            {
+                'id': 'manual',
+                'date': self.day.isoformat(),
+                'total_kcal': 3500,
+                'coverage': 'full',
+                'coverage_hours': 12,
+            },
+        )
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(10) + self.garmin_days(1, total=3200, end=self.day)}
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertEqual(context['energy_reference']['total_kcal'], 3200)
+        self.assertEqual(context['energy_reference']['source'], 'garmin')
+        self.snapshot['daily_energy']['daily'].pop()
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+        self.assertEqual(context['energy_reference']['source'], 'garmin_recent_mean')
+
+    def test_manual_total_does_not_override_explicit_model_or_wearable_choice(self):
+        self.health.save(
+            'energy_records',
+            {'id': 'manual', 'date': self.day.isoformat(), 'total_kcal': 3500, 'coverage': 'complete'},
+        )
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(10)}
+        for method, source in (('model', 'profile_model'), ('wearable', 'garmin_recent_mean')):
+            with self.subTest(method=method):
+                self.health.update('preferences', {'energy_method': method})
+                _, context, _, _ = context_for(self.health, self.snapshot, self.day)
+                self.assertEqual(context['energy_reference']['source'], source)
 
     def test_wearable_method_without_enough_days_never_calls_ai(self):
         self.health.update('preferences', {'energy_method': 'wearable'})
@@ -424,6 +504,8 @@ class NutritionTargetTests(unittest.TestCase):
         targets = NutritionTargets(self.health, lambda: self.snapshot, diary=diary)
         _, context, _, _ = context_for(self.health, self.snapshot, self.day, diary)
         self.assertEqual(context['calibration']['status'], 'applied')
+        self.assertIn('Calibrada', context['interpretation']['energy_reference'])
+        self.assertNotIn('não calibrada', context['interpretation']['energy_reference'])
         reference = context['energy_reference']
         self.assertIn('intake_weight_trend_calibration_v1', reference['method'])
         self.assertEqual(reference['total_kcal'], context['calibration']['calibrated_kcal'])
@@ -434,3 +516,30 @@ class NutritionTargetTests(unittest.TestCase):
         plan = _active_plan(self.health.read(), self.day)
         self.assertEqual(plan['calibration']['status'], 'applied')
         self.assertEqual(plan['baseline_source'], 'garmin_recent_mean')
+        self.assertTrue(any('calibração estima o gasto' in text for text in plan['limitations']))
+        self.assertFalse(any('não foi validada por ingestão' in text for text in plan['limitations']))
+
+    def test_calibration_ignores_weights_outside_its_28_day_window(self):
+        diary = Diary()
+        for offset in range(1, 15):
+            diary.meal(self.day - timedelta(days=offset), kcal=2400)
+        self.snapshot['daily_energy'] = {'daily': self.garmin_days(14)}
+        for index, offset in enumerate((100, 93, 86, 79)):
+            self.health.save(
+                'measurements',
+                {'id': f'old{index}', 'date': (self.day - timedelta(days=offset)).isoformat(), 'weight_kg': 80 + index},
+            )
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day, diary)
+        self.assertEqual(context['calibration']['status'], 'insufficient')
+        self.assertEqual(context['calibration']['weight_points'], 0)
+        self.assertEqual(context['energy_reference']['total_kcal'], 2706)
+        for index, offset in enumerate((28, 21, 14, 1, 0)):
+            self.health.save(
+                'measurements',
+                {'id': f'recent{index}', 'date': (self.day - timedelta(days=offset)).isoformat(), 'weight_kg': 80.0},
+            )
+        _, context, _, _ = context_for(self.health, self.snapshot, self.day, diary)
+        self.assertEqual(context['calibration']['status'], 'applied')
+        self.assertEqual(context['calibration']['weight_points'], 4)
+        self.assertEqual(context['calibration']['weight_span_days'], 27)
+        self.assertEqual(context['calibration']['weekly_change_kg'], 0)
